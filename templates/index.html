@@ -312,7 +312,8 @@
       );
       proj4.defs("EPSG:4326", "+proj=longlat +datum=WGS84 +no_defs");
 
-      let currentProj = "EPSG:32643";
+      // Global mapping state and configuration
+      let currentProj = "EPSG:32643"; // Default UTM zone for Maharashtra
       let manualOffsetX = 0.0;
       let manualOffsetY = 0.0;
       let map = null;
@@ -340,9 +341,11 @@
         clearBtn: document.getElementById("clearSelectedBtn"),
       };
 
+      // State for multi-plot selection feature
       let selectedPlots = [];
       let multiPlotLayer = null;
 
+      // Initialize location selectors on page load
       window.onload = loadDistricts;
       els.cat.addEventListener("change", loadDistricts);
       els.dist.addEventListener("change", loadTalukas);
@@ -613,6 +616,10 @@
       }
 
       async function plotAllSelected() {
+        /**
+         * Fetches and renders all plots currently in the selection list.
+         * Logic: Sequential API calls (async) + WKT to GeoJSON conversion.
+         */
         if (!map) return;
         if (selectedPlots.length === 0)
           return alert("Add plots to list first.");
@@ -711,6 +718,10 @@
 
       let villageBoundariesLayer = null;
       async function toggleVillageMap() {
+        /**
+         * Fetches and displays multiple plot boundaries for the entire village.
+         * Fetched in batches to avoid overwhelming the browser/server.
+         */
         if (!map) return;
         if (villageBoundariesLayer) {
           map.removeLayer(villageBoundariesLayer);
