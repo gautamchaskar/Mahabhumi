@@ -10,7 +10,7 @@ HEADERS = {
 
 def get_plot_coordinates(giscode, plot_number):
     """
-    Fetches the polygon geometry for a given plot.
+    Fetches the polygon geometry (WKT) for a specific plot from the Mahabhunakasha API.
     
     Args:
         giscode (str): The 25-digit GIS code (Prefix + District + Taluka + Village).

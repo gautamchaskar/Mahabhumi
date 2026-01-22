@@ -77,6 +77,12 @@
           max-height: none !important;
         }
       }
+      .leaflet-path-transform-handler {
+        background-color: #fff;
+        border: 1px solid #dc3545;
+        border-radius: 50%;
+        box-shadow: 0 0 4px rgba(0, 0, 0, 0.3);
+      }
     </style>
   </head>
   <body>
@@ -295,6 +301,9 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/proj4js/2.9.0/proj4.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/wicket/1.3.8/wicket.min.js"></script>
+    <!-- Path Transformations (Drag & Rotate) -->
+    <script src="https://unpkg.com/leaflet-path-drag@1.1.0/dist/L.Path.Drag.js"></script>
+    <script src="https://unpkg.com/leaflet-path-transform@1.1.3/dist/L.Path.Transform.js"></script>
 
     <script>
       // Projections
@@ -544,6 +553,7 @@
                             <input type="number" id="plotLimit" class="form-control" value="50" min="1" max="1000" title="Plot Limit">
                           </div>
                           <button class="btn btn-outline-secondary" onclick="toggleVillageMap()" title="Show All Plots"><i class="fas fa-layer-group"></i></button>
+                          <button class="btn btn-outline-warning" onclick="toggleInteraction()" title="Enable Drag/Rotate"><i class="fas fa-arrows-alt"></i></button>
                           <button class="btn btn-outline-secondary" onclick="toggleFullScreen()"><i class="fas fa-expand"></i></button>
                        </div>
                     </div>
@@ -668,9 +678,19 @@
                   fillOpacity: 0.05,
                   opacity: 0.9,
                 },
+                transform: true, // Enable transform for multi-plots
               })
                 .bindPopup(`<b>Multi-Plot Gat:</b> ${p}`)
                 .addTo(multiPlotLayer);
+
+              // Auto-enable if interaction mode is on
+              if (interactionEnabled) {
+                multiPlotLayer.eachLayer((group) => {
+                  group.eachLayer((l) =>
+                    l.transform ? l.transform.enable() : null,
+                  );
+                });
+              }
 
               loaded++;
               btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> ${loaded}/${selectedPlots.length}`;
@@ -714,6 +734,51 @@
       }
       function refreshMap() {
         if (map && window.lastWkt) initMap(window.lastWkt);
+      }
+
+      let interactionEnabled = false;
+      function toggleInteraction() {
+        interactionEnabled = !interactionEnabled;
+        const btn = event.target.closest("button");
+        btn.classList.toggle("btn-warning", !interactionEnabled);
+        btn.classList.toggle("btn-danger", interactionEnabled);
+        btn.innerHTML = interactionEnabled
+          ? '<i class="fas fa-lock-open"></i>'
+          : '<i class="fas fa-arrows-alt"></i>';
+
+        // Update current primary polygon
+        if (window.currentPolygonLayer) {
+          window.currentPolygonLayer.eachLayer((layer) => {
+            if (layer.transform) {
+              if (interactionEnabled) layer.transform.enable();
+              else layer.transform.disable();
+            }
+          });
+        }
+
+        // Update multi-selection layers
+        if (multiPlotLayer) {
+          multiPlotLayer.eachLayer((group) => {
+            group.eachLayer((layer) => {
+              if (layer.transform) {
+                if (interactionEnabled) layer.transform.enable();
+                else layer.transform.disable();
+              }
+            });
+          });
+        }
+
+        // Update village layer
+        if (villageBoundariesLayer) {
+          villageBoundariesLayer.eachLayer((group) => {
+            group.eachLayer((layer) => {
+              if (layer.transform) {
+                if (interactionEnabled) layer.transform.enable();
+                else layer.transform.disable();
+              }
+            });
+          });
+        }
       }
 
       let villageBoundariesLayer = null;
@@ -782,9 +847,19 @@
                     fillOpacity: 0,
                     opacity: 0.8,
                   },
+                  transform: true, // Enable transform for village plots
                 })
                   .bindPopup(`Gat: ${p}`)
                   .addTo(villageBoundariesLayer);
+
+                // Auto-enable if interaction mode is on
+                if (interactionEnabled) {
+                  villageBoundariesLayer.eachLayer((group) => {
+                    group.eachLayer((l) =>
+                      l.transform ? l.transform.enable() : null,
+                    );
+                  });
+                }
                 loaded++;
                 btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> ${loaded}/${plots.length}`;
               }
@@ -828,7 +903,15 @@
           gj.coordinates = tr(gj.coordinates);
           window.currentPolygonLayer = L.geoJSON(gj, {
             style: { color: "#0d6efd", weight: 2, fillOpacity: 0.1 },
+            transform: true, // Enable transform plugin for this layer
           }).addTo(map);
+
+          // Auto-enable if interaction mode is on
+          if (interactionEnabled) {
+            window.currentPolygonLayer.eachLayer((l) =>
+              l.transform ? l.transform.enable() : null,
+            );
+          }
 
           let latSum = 0,
             lngSum = 0,

@@ -2,6 +2,10 @@ from mahabhumi_scraper import MahabhumiScraper
 import json
 
 def test_fetch_plots():
+    """
+    Test script to verify the sequence of API calls required to fetch plot lists.
+    Demonstrates the level-based navigation (District -> Taluka -> Village -> Plots).
+    """
     scraper = MahabhumiScraper()
     
     # We need a valid village code to test.
