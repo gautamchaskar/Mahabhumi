@@ -35,9 +35,6 @@
         position: sticky;
         top: 0;
         z-index: 1000;
-        height: 100vh;
-        max-height: 100vh;
-        overflow-y: auto;
         border-radius: 0;
         border-right: 1px solid #dee2e6;
         box-shadow: 2px 0 5px rgba(0, 0, 0, 0.05);
@@ -66,9 +63,6 @@
         .sticky-sidebar {
           position: sticky;
           top: 56px;
-          height: calc(100vh - 56px);
-          max-height: calc(100vh - 56px);
-          overflow-y: auto;
         }
       }
       @media (max-width: 767.98px) {
@@ -231,6 +225,18 @@
                   >
                     <i class="fas fa-layer-group me-1"></i> Plot Selected
                   </button>
+                  <div
+                    id="plotProgress"
+                    class="progress mb-2"
+                    style="display: none; height: 10px"
+                  >
+                    <div
+                      id="plotProgressBar"
+                      class="progress-bar progress-bar-striped progress-bar-animated bg-success"
+                      role="progressbar"
+                      style="width: 0%"
+                    ></div>
+                  </div>
                   <button
                     id="clearSelectedBtn"
                     class="btn btn-outline-danger btn-sm"
@@ -245,7 +251,7 @@
         </div>
 
         <!-- Center: Results Panel -->
-        <div class="col-md-9 col-lg-10 bg-white h-100 min-vh-100 overflow-auto">
+        <div class="col-md-9 col-lg-10 bg-white min-vh-100">
           <div class="p-4">
             <div id="loading" class="text-center py-5">
               <div
@@ -326,6 +332,7 @@
       let manualOffsetX = 0.0;
       let manualOffsetY = 0.0;
       let map = null;
+      let plottedCoordinates = []; // Array to store {label, coordinates: [[lng, lat], ...]}
 
       const els = {
         cat: document.getElementById("category"),
@@ -348,6 +355,8 @@
         selectedList: document.getElementById("selectedPlotsList"),
         plotSelBtn: document.getElementById("plotSelectedBtn"),
         clearBtn: document.getElementById("clearSelectedBtn"),
+        progress: document.getElementById("plotProgress"),
+        progressBar: document.getElementById("plotProgressBar"),
       };
 
       // State for multi-plot selection feature
@@ -515,7 +524,7 @@
             els.res.innerHTML = `
               <div class="row g-3">
                 <div class="col-md-5">
-                  <div class="card border h-100" style="max-height: 80vh; overflow-y: auto;">
+                  <div class="card border">
                     <div class="card-body">
                       <h4 class="fw-bold text-primary mb-1">Gat No ${res.plotno}</h4>
                       <p class="small text-muted mb-3 font-monospace">${res.giscode}</p>
@@ -524,6 +533,7 @@
                       </div>
                       <div id="coord-summary" class="badge bg-dark text-warning p-2 mb-3 w-100">Calibrating...</div>
                       <div class="d-flex gap-2 mb-3">
+                        ${res.report_url ? `<a href="${res.report_url}" target="bhumap" class="btn btn-outline-primary btn-sm flex-grow-1">Map Report</a>` : ""}
                         ${res.infoLinks ? res.infoLinks.replace(/<a /g, '<a class="btn btn-outline-primary btn-sm flex-grow-1" ') : ""}
                       </div>
                       <h6 class="fw-bold small border-bottom pb-2">Owners</h6>
@@ -542,18 +552,45 @@
                        </select>
                        <div class="btn-group btn-group-sm">
                           <button type="button" class="btn btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown">Calibrate</button>
-                          <ul class="dropdown-menu dropdown-menu-end p-3" style="width: 250px;">
-                             <li class="mb-2">X: <span id="off-x-val" class="fw-bold">0</span></li>
-                             <div class="btn-group btn-group-sm mb-2"><button class="btn btn-outline-primary" onclick="nudge('x', -0.0001)">-10m</button><button class="btn btn-outline-primary" onclick="nudge('x', -0.00001)">-1m</button><button class="btn btn-outline-primary" onclick="nudge('x', 0.00001)">+1m</button><button class="btn btn-outline-primary" onclick="nudge('x', 0.0001)">+10m</button></div>
-                             <li class="mb-2">Y: <span id="off-y-val" class="fw-bold">0</span></li>
-                             <div class="btn-group btn-group-sm mb-2"><button class="btn btn-outline-primary" onclick="nudge('y', -0.0001)">-10m</button><button class="btn btn-outline-primary" onclick="nudge('y', -0.00001)">-1m</button><button class="btn btn-outline-primary" onclick="nudge('y', 0.00001)">+1m</button><button class="btn btn-outline-primary" onclick=" nudge('y', 0.0001)">+10m</button></div>
-                             <button class="btn btn-sm btn-link text-danger" onclick="resetOffsets()">Reset All</button>
+                          <ul class="dropdown-menu dropdown-menu-end p-3 shadow-lg" style="width: 300px;">
+                             <li class="mb-3">
+                                <label class="form-label small fw-bold">X Offset (Longitude)</label>
+                                <div class="d-flex align-items-center gap-2 mb-2">
+                                   <div class="btn-group btn-group-sm flex-grow-1">
+                                      <button class="btn btn-outline-primary" onclick="nudge('x', -0.0001)">-10m</button>
+                                      <button class="btn btn-outline-primary" onclick="nudge('x', -0.00001)">-1m</button>
+                                   </div>
+                                   <span id="off-x-val" class="badge bg-light text-dark border font-monospace" style="min-width: 80px;">0.000000</span>
+                                   <div class="btn-group btn-group-sm flex-grow-1">
+                                      <button class="btn btn-outline-primary" onclick="nudge('x', 0.00001)">+1m</button>
+                                      <button class="btn btn-outline-primary" onclick="nudge('x', 0.0001)">+10m</button>
+                                   </div>
+                                </div>
+                             </li>
+                             <li class="mb-3">
+                                <label class="form-label small fw-bold">Y Offset (Latitude)</label>
+                                <div class="d-flex align-items-center gap-2 mb-2">
+                                   <div class="btn-group btn-group-sm flex-grow-1">
+                                      <button class="btn btn-outline-primary" onclick="nudge('y', -0.0001)">-10m</button>
+                                      <button class="btn btn-outline-primary" onclick="nudge('y', -0.00001)">-1m</button>
+                                   </div>
+                                   <span id="off-y-val" class="badge bg-light text-dark border font-monospace" style="min-width: 80px;">0.000000</span>
+                                   <div class="btn-group btn-group-sm flex-grow-1">
+                                      <button class="btn btn-outline-primary" onclick="nudge('y', 0.00001)">+1m</button>
+                                      <button class="btn btn-outline-primary" onclick="nudge('y', 0.0001)">+10m</button>
+                                   </div>
+                                </div>
+                             </li>
+                             <div class="d-grid mt-2">
+                                <button class="btn btn-sm btn-outline-danger" onclick="resetOffsets()">Reset All Offsets</button>
+                             </div>
                           </ul>
                           <div class="input-group input-group-sm" style="width: 80px;">
                             <input type="number" id="plotLimit" class="form-control" value="50" min="1" max="1000" title="Plot Limit">
                           </div>
                           <button class="btn btn-outline-secondary" onclick="toggleVillageMap()" title="Show All Plots"><i class="fas fa-layer-group"></i></button>
                           <button class="btn btn-outline-warning" onclick="toggleInteraction()" title="Enable Drag/Rotate"><i class="fas fa-arrows-alt"></i></button>
+                          <button class="btn btn-outline-success" onclick="downloadDXF()" title="Download DWG (AutoCAD)"><i class="fas fa-file-export"></i> DWG</button>
                           <button class="btn btn-outline-secondary" onclick="toggleFullScreen()"><i class="fas fa-expand"></i></button>
                        </div>
                     </div>
@@ -581,21 +618,109 @@
         updateSelectionUI();
       }
 
-      function addAllPlotsToList() {
+      async function addAllPlotsToList() {
         const options = els.plot.options;
-        let addedCount = 0;
+        let plotsToAdd = [];
+
+        // Gather all plot numbers not already selected
         for (let i = 0; i < options.length; i++) {
           const val = options[i].value;
           if (val && !selectedPlots.includes(val)) {
-            selectedPlots.push(val);
-            addedCount++;
+            plotsToAdd.push(val);
           }
         }
-        if (addedCount > 0) {
+
+        if (plotsToAdd.length === 0) {
+          return alert("All available plots are already in the list.");
+        }
+
+        // Show loading indicator
+        showLoading(true);
+
+        try {
+          // Call Batch API to check cache
+          const response = await axios.post("/api/plots/batch", {
+            village_code: els.vil.value,
+            plot_nos: plotsToAdd,
+            category: els.cat.value,
+            district: els.dist.value,
+            taluka: els.tal.value,
+          });
+
+          const found = response.data.found || [];
+          const missing = response.data.missing || [];
+
+          console.log(
+            `Batch Fetch: Found ${found.length}, Missing ${missing.length}`,
+          );
+
+          // Process Found Plots (Instant Add)
+          found.forEach((plot) => {
+            if (!selectedPlots.includes(plot.plotno)) {
+              selectedPlots.push(plot.plotno);
+              // Add to cache manually to avoid re-fetching
+              // We need to make sure the format matches what fetchPlot returns
+              // fetchPlot returns the full object.
+              // We can just call initMap with the geometry.
+              // But we also need to store it in a way that `plotAllSelected` knows it's done?
+              // Actually `plotAllSelected` iterates `selectedPlots` and calls `fetchPlot`.
+              // We should update `plotCache`!
+              // Assuming we have a global `plotCache` or similar?
+              // The current implementation of `fetchPlot` doesn't seem to use a global explicit cache object
+              // other than `window.currentGisCode` which is just one.
+              // Wait, `fetchPlot` calls `initMap`.
+              // Let's look at `fetchPlot` again.
+              // It makes a request to `/api/plot`.
+              // We should probably just render them immediately.
+
+              // Add to map immediately
+              initMap(plot.the_geom);
+            }
+          });
+
+          updateSelectionUI();
+
+          // Queue Missing Plots
+          if (missing.length > 0) {
+            // Add missing plots to selection so they appear in the list
+            missing.forEach((p) => {
+              if (!selectedPlots.includes(p)) selectedPlots.push(p);
+            });
+            updateSelectionUI();
+
+            // Trigger fetching for missing ones
+            // We can reuse plotAllSelected logic but only for missing ones?
+            // Or just let the user click "Plot All"?
+            // The user expects "Show All Plots" to do it.
+            // So we should queue them.
+
+            // We need to be careful not to re-fetch the ones we just found.
+            // `fetchPlot` doesn't check if it's already on map (it clears map usually? No, initMap adds layer).
+            // But `initMap` adds to `plotLayer`.
+
+            // Let's iterate missing and call fetchPlot with concurrency
+            // We can use the existing `fetchQueue` logic if we expose it or just loop.
+            // The existing `plotAllSelected` does: `processQueue()`.
+            // We should probably just push missing to queue.
+
+            missing.forEach((p) => {
+              fetchQueue.push(p);
+            });
+            processQueue();
+          }
+        } catch (e) {
+          console.error("Batch fetch error", e);
+          alert(
+            "Error fetching plots in batch. Falling back to individual fetch.",
+          );
+          // Fallback
+          plotsToAdd.forEach((p) => {
+            if (!selectedPlots.includes(p)) selectedPlots.push(p);
+          });
           updateSelectionUI();
           plotAllSelected();
-        } else {
-          alert("All available plots are already in the list.");
+        } finally {
+          showLoading(false);
         }
       }
 
@@ -618,6 +743,7 @@
 
       function clearSelectedPlots() {
         selectedPlots = [];
+        plottedCoordinates = [];
         updateSelectionUI();
         if (multiPlotLayer) {
           map.removeLayer(multiPlotLayer);
@@ -627,8 +753,7 @@
 
       async function plotAllSelected() {
         /**
-         * Fetches and renders all plots currently in the selection list.
-         * Logic: Sequential API calls (async) + WKT to GeoJSON conversion.
+         * Fetches and renders all plots currently in the selection list in batches.
          */
         if (!map) return;
         if (selectedPlots.length === 0)
@@ -636,11 +761,16 @@
 
         if (multiPlotLayer) map.removeLayer(multiPlotLayer);
         multiPlotLayer = L.layerGroup().addTo(map);
+        plottedCoordinates = []; // Reset for new selection
 
         const btn = els.plotSelBtn;
         btn.disabled = true;
         const originalHtml = btn.innerHTML;
-        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Loading...';
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Batching...';
+
+        els.progress.style.display = "block";
+        els.progressBar.style.width = "0%";
+        els.progressBar.textContent = "0%";
 
         const cat = els.cat.value;
         const d = els.dist.value;
@@ -648,64 +778,87 @@
         const v = els.vil.value;
 
         let loaded = 0;
-        for (const p of selectedPlots) {
-          try {
-            const pRes = await axios.get(
-              `/api/plot?category=${cat}&district=${d}&taluka=${t}&village_code=${v}&plot_no=${p}`,
-            );
-            if (pRes.data && pRes.data.the_geom) {
-              const wktObj = new Wkt.Wkt();
-              wktObj.read(pRes.data.the_geom);
-              let gj = wktObj.toJson();
+        const total = selectedPlots.length;
 
-              const tr = (c) => {
-                if (typeof c[0] === "number") {
-                  let ll = proj4(
-                    currentProj === "EPSG:4326" ? "WGS84" : currentProj,
-                    "EPSG:4326",
-                    c,
-                  );
-                  return [ll[0] + manualOffsetX, ll[1] + manualOffsetY];
-                }
-                return c.map(tr);
-              };
-              gj.coordinates = tr(gj.coordinates);
+        // Process in small batches of 2 to reduce server load and timeouts
+        const batchSize = 2;
+        for (let i = 0; i < total; i += batchSize) {
+          const batch = selectedPlots.slice(i, i + batchSize);
+          const promises = batch.map(async (p) => {
+            try {
+              const pRes = await axios.get(
+                `/api/plot?category=${cat}&district=${d}&taluka=${t}&village_code=${v}&plot_no=${p}`,
+              );
+              if (pRes.data && pRes.data.the_geom) {
+                const wktObj = new Wkt.Wkt();
+                wktObj.read(pRes.data.the_geom);
+                let gj = wktObj.toJson();
 
-              L.geoJSON(gj, {
-                style: {
-                  color: "#dc3545", // Sharp Red for better visibility on green
-                  weight: 1.5,
-                  fillOpacity: 0.05,
-                  opacity: 0.9,
-                },
-                transform: true, // Enable transform for multi-plots
-              })
-                .bindPopup(`<b>Multi-Plot Gat:</b> ${p}`)
-                .addTo(multiPlotLayer);
+                // Clone for export (keep original UTM coordinates)
+                let exportGj = JSON.parse(JSON.stringify(gj));
 
-              // Auto-enable if interaction mode is on
-              if (interactionEnabled) {
-                multiPlotLayer.eachLayer((group) => {
-                  group.eachLayer((l) =>
-                    l.transform ? l.transform.enable() : null,
-                  );
+                const tr = (c) => {
+                  if (typeof c[0] === "number") {
+                    let ll = proj4(
+                      currentProj === "EPSG:4326" ? "WGS84" : currentProj,
+                      "EPSG:4326",
+                      c,
+                    );
+                    return [ll[0] + manualOffsetX, ll[1] + manualOffsetY];
+                  }
+                  return c.map(tr);
+                };
+                gj.coordinates = tr(gj.coordinates);
+
+                // Extract and store coordinates for export
+                const formatCoords = (coords) => {
+                  if (typeof coords[0] === "number")
+                    return [coords[0], coords[1]];
+                  return coords.map(formatCoords);
+                };
+
+                plottedCoordinates.push({
+                  label: `Gat-${p}`,
+                  coordinates: formatCoords(exportGj.coordinates),
+                  owner_info: pRes.data.parsed_records || [],
                 });
-              }
 
-              loaded++;
-              btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> ${loaded}/${selectedPlots.length}`;
+                L.geoJSON(gj, {
+                  style: {
+                    color: "#dc3545",
+                    weight: 1.5,
+                    fillOpacity: 0.05,
+                    opacity: 0.9,
+                  },
+                  transform: true,
+                })
+                  .bindPopup(`<b>Multi-Plot Gat:</b> ${p}`)
+                  .addTo(multiPlotLayer);
+
+                loaded++;
+                const pct = Math.round((loaded / total) * 100);
+                els.progressBar.style.width = `${pct}%`;
+                els.progressBar.textContent = `${pct}%`;
+              }
+            } catch (e) {
+              console.error("Batch plot error", e);
             }
-          } catch (e) {
-            console.error("Multi-plot error", e);
-          }
+          });
+          await Promise.all(promises);
+
+          // Add a small delay between batches to be nice to the server
+          await new Promise((r) => setTimeout(r, 1000));
         }
 
         btn.disabled = false;
         btn.innerHTML = originalHtml;
+        setTimeout(() => {
+          els.progress.style.display = "none";
+        }, 1500);
+
         if (window.currentPolygonLayer)
           window.currentPolygonLayer.bringToFront();
 
-        // Fit bounds to the whole selection
         const bounds = L.featureGroup(multiPlotLayer.getLayers()).getBounds();
         if (bounds.isValid()) map.fitBounds(bounds);
       }
@@ -801,6 +954,7 @@
         btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
 
         villageBoundariesLayer = L.layerGroup().addTo(map);
+        plottedCoordinates = []; // Reset for whole village
         const gis = window.currentGisCode;
         const cat = gis.startsWith("RVM") ? "R" : "V",
           d = gis.substring(3, 5),
@@ -828,6 +982,10 @@
                 const wktObj = new Wkt.Wkt();
                 wktObj.read(pRes.data.the_geom);
                 let gj = wktObj.toJson();
+
+                // Clone for export (keep original UTM coordinates)
+                let exportGj = JSON.parse(JSON.stringify(gj));
+
                 const tr = (c) => {
                   if (typeof c[0] === "number") {
                     let ll = proj4(
@@ -840,6 +998,18 @@
                   return c.map(tr);
                 };
                 gj.coordinates = tr(gj.coordinates);
+
+                // Store coordinates for export
+                const formatCoords = (coords) => {
+                  if (typeof coords[0] === "number")
+                    return [coords[0], coords[1]];
+                  return coords.map(formatCoords);
+                };
+                plottedCoordinates.push({
+                  label: `Gat-${p}`,
+                  coordinates: formatCoords(exportGj.coordinates),
+                });
+
                 L.geoJSON(gj, {
                   style: {
                     color: "#333",
@@ -868,8 +1038,64 @@
         } catch (e) {}
         btn.disabled = false;
         btn.innerHTML = originalHtml;
+        console.log(
+          `Finished plotting village map with ${loaded} plots. Current coordinate array:`,
+          plottedCoordinates,
+        );
         if (window.currentPolygonLayer)
           window.currentPolygonLayer.bringToFront();
+      }
+
+      async function downloadDXF() {
+        /**
+         * Sends the collected plottedCoordinates array to the backend
+         * for DWG/DXF generation with explicit points.
+         */
+        console.log("Plotted Coordinates for Export:", plottedCoordinates);
+
+        if (plottedCoordinates.length === 0) {
+          // If the array is empty, try to fallback to scraping current layers (legacy)
+          // or alert the user.
+          return alert(
+            "No plots found in the coordinate list. Please click 'Plot Selected' or 'Village Map' first.",
+          );
+        }
+
+        const btn = event.target.closest("button");
+        const originalHtml = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> EXPORTING...';
+
+        try {
+          const response = await axios.post(
+            "/api/download_dxf",
+            {
+              plots: plottedCoordinates,
+              village_code: els.vil.value,
+              epsg: currentProj,
+            },
+            { responseType: "blob" },
+          );
+          const url = window.URL.createObjectURL(response.data);
+          const link = document.createElement("a");
+          link.href = url;
+          link.setAttribute(
+            "download",
+            `mahabhumi_export_${new Date().getTime()}.zip`,
+          );
+          document.body.appendChild(link);
+          link.click();
+          setTimeout(() => {
+            document.body.removeChild(link);
+            window.URL.revokeObjectURL(url);
+          }, 100);
+        } catch (e) {
+          console.error("DXF Export Error:", e);
+          alert("Failed to export DWG. Check console.");
+        } finally {
+          btn.disabled = false;
+          btn.innerHTML = originalHtml;
+        }
       }
 
       function initMap(wkt) {

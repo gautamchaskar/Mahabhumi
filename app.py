@@ -2,6 +2,11 @@ from flask import Flask, render_template, jsonify, request, Response
 from mahabhumi_scraper import MahabhumiScraper
 import json
 import requests
+import ezdxf
+import io
+import zipfile
+import math
+from PIL import Image
 
 app = Flask(__name__)
 # Global scraper instance
@@ -212,6 +217,282 @@ def download_village_map(giscode):
         traceback.print_exc()
         return jsonify({"error": str(e)}), 500
 
+@app.route('/api/download_dxf', methods=['POST'])
+def download_dxf():
+    """Generates and returns an AutoCAD DXF file from plot geometries."""
+    print("API: Download DXF", flush=True)
+    try:
+        data = request.json
+        if not data or 'plots' not in data:
+            return jsonify({"error": "No plot data provided"}), 400
+        
+        # Create a new DXF document
+        doc = ezdxf.new('R2010')
+        msp = doc.modelspace()
+        
+        # Set PDMODE to make points visible (34 = Circle with X, 3 = X, 2 = +)
+        # 34 is good for visibility
+        doc.header['$PDMODE'] = 34
+        # Set PDSIZE (0 = 5% of screen, >0 = absolute size, <0 = % of viewport)
+        # We'll leave it 0 or set a small absolute size if needed, but 0 is usually fine for "screen relative"
+        # or we can try setting it to a small fixed value if we knew the scale.
+        # Let's stick to PDMODE for now.
+        
+        # Set Point Style to Circle with Cross (35)
+        doc.header['$PDMODE'] = 35
+        doc.header['$PDSIZE'] = 1.0 # 1 meter size
+        
+        # Setup layers
+        doc.layers.new(name='PLOT_BOUNDARIES', dxfattribs={'color': 1}) # Red
+        doc.layers.new(name='COORDINATE_LABELS', dxfattribs={'color': 2}) # Yellow
+        doc.layers.new(name='PLOT_NUMBERS', dxfattribs={'color': 3}) # Green
+        doc.layers.new(name='METADATA', dxfattribs={'color': 4}) # Cyan
+        
+        msp = doc.modelspace()
+        
+        all_x = []
+        all_y = []
+        
+        for plot in data['plots']:
+            label = plot.get('label', 'Unnamed Plot')
+            coords = plot.get('coordinates', [])
+            
+            if not coords:
+                continue
+            
+            def process_ring(ring_coords, is_hole=False):
+                if not ring_coords or not isinstance(ring_coords, list): return []
+                
+                # Check if ring_coords is [ [lng, lat], ... ]
+                if isinstance(ring_coords[0], (list, tuple)) and not isinstance(ring_coords[0][0], (list, tuple)):
+                    poly_pts = [(float(p[0]), float(p[1])) for p in ring_coords]
+                    if len(poly_pts) < 2: return []
+                    
+                    # Store for bounding box
+                    for x, y in poly_pts:
+                        all_x.append(x)
+                        all_y.append(y)
+                    
+                    if poly_pts[0] != poly_pts[-1]:
+                        poly_pts.append(poly_pts[0])
+                    
+                    # Add plot boundary
+                    msp.add_lwpolyline(poly_pts, format='xy', dxfattribs={'layer': 'PLOT_BOUNDARIES'})
+                    return poly_pts
+                else:
+                    # It's a list of rings (multipolygon or nested)
+                    all_pts = []
+                    for i, sub in enumerate(ring_coords):
+                        pts = process_ring(sub, is_hole=(i > 0))
+                        if pts: all_pts.extend(pts)
+                    return all_pts
+
+            vertices = process_ring(coords)
+            
+            if vertices:
+                # We'll calculate text height later once we have the full bounding box
+                # But for now, we'll place them and update if needed (or just use a sensible default)
+                # Sensible default will be determined after processing all plots.
+                pass
+
+        # Calculate a reasonable text height based on bounding box
+        if all_x and all_y:
+            min_x, max_x = min(all_x), max(all_x)
+            min_y, max_y = min(all_y), max(all_y)
+            width = max_x - min_x
+            height = max_y - min_y
+            size = max(width, height)
+            
+            # If size is very small (like degrees), text height should be small
+            # If size is large (like meters), text height should be larger
+            # If size is large (like meters), text height should be larger
+            # User requested smaller text. 
+            # Previous: size * 0.01. Let's try 0.002 (0.2%)
+            text_h = size * 0.002 if size > 0 else 0.1
+            if text_h == 0: text_h = 0.1
+            
+            # Now add labels and coordinates
+            for plot in data['plots']:
+                label = plot.get('label', 'Unnamed Plot')
+                coords = plot.get('coordinates', [])
+                
+                def add_labels(ring_coords, p_label, metadata):
+                    if not ring_coords or not isinstance(ring_coords, list): return
+                    if isinstance(ring_coords[0], (list, tuple)) and not isinstance(ring_coords[0][0], (list, tuple)):
+                        poly_pts = [(float(p[0]), float(p[1])) for p in ring_coords]
+                        
+                        # Calculate Centroid for Label
+                        xs = [p[0] for p in poly_pts]
+                        ys = [p[1] for p in poly_pts]
+                        cx = sum(xs) / len(xs)
+                        cy = sum(ys) / len(ys)
+
+                        # Clean label (Remove 'Gat-' if present to just show number)
+                        clean_label = p_label.replace('Gat-', '')
+
+                        # Add Plot Label at center
+                        # User requested smaller survey numbers
+                        msp.add_text(clean_label, dxfattribs={
+                            'height': text_h * 0.8, # Reduced from 1.5
+                            'insert': (cx, cy),
+                            'layer': 'PLOT_NUMBERS',
+                            'color': 3
+                        })
+                        
+                        # Add explicit POINT entities at vertices for selection
+                        for x, y in poly_pts:
+                            msp.add_point((x, y), dxfattribs={'layer': 'COORDINATE_LABELS'})
+                            
+                            # Removed per-vertex text labels to reduce clutter as per user request.
+                            # Coordinates can be viewed by selecting the point in CAD.
+                    else:
+                        for sub in ring_coords:
+                            add_labels(sub, p_label, metadata)
+                
+                add_labels(coords, label, plot.get('owner_info', []))
+
+        # --- WMS Image Embedding Logic ---
+        # 1. Calculate Bounding Box
+        if all_x and all_y:
+            min_x, max_x = min(all_x), max(all_x)
+            min_y, max_y = min(all_y), max(all_y)
+            
+            # Add some padding (5%)
+            width = max_x - min_x
+            height = max_y - min_y
+            pad_x = width * 0.05
+            pad_y = height * 0.05
+            
+            bbox = [min_x - pad_x, min_y - pad_y, max_x + pad_x, max_y + pad_y]
+            
+            # 2. Fetch WMS Image
+            # We need the village code. We can get it from the first plot's GIS code if available,
+            # or pass it from frontend. The frontend passes 'plots' list.
+            # Let's try to extract it from the first plot's owner info or just use the one from the request if we had it.
+            # But the /download_dxf endpoint only gets the list of coords.
+            # However, we can infer the village code from the layer name if we had it, but we don't.
+            # Actually, the user selects a village, so all plots are from one village.
+            # We can try to guess the village code or just ask the user to pass it.
+            # For now, let's try to find a GIS code in the plot data.
+            village_code = None
+            for p in data['plots']:
+                # Check if we have giscode in the plot object (we might not if it's just coords)
+                # The frontend sends: label, coordinates, owner_info.
+                # It does NOT send giscode directly in the simplified object.
+                # But wait, the frontend `plottedCoordinates` push does NOT include giscode.
+                # We might need to update frontend to send village code.
+                # OR we can just use the WMS bounds to fetch the image without layer filter?
+                # No, Mahabhumi WMS usually requires a layer.
+                # Actually, we can use the "VillageMap" layer or similar if generic.
+                # But better to use the specific village code if possible.
+                pass
+
+            # Update: We will try to fetch the image using the bounding box.
+            # The WMS URL: https://mahabhunakasha.mahabhumi.gov.in/WMS
+            # Layers: We need the village code. 
+            # Let's assume for now we can't get the village code easily without frontend change.
+            # BUT, we can try to fetch without a specific layer or use a wildcard? Unlikely.
+            # Let's look at the frontend code again. `plottedCoordinates` has `label`.
+            # We really need the village code.
+            # Let's Modify the frontend to send `village_code` in the request body.
+            
+            # Assuming we will update frontend to send 'village_code'
+            village_code = request.json.get('village_code')
+            
+            wms_image_data = None
+            if village_code:
+                try:
+                    # Calculate image size (max 2048px)
+                    img_w = 2048
+                    img_h = int(img_w * (height / width))
+                    if img_h > 2048:
+                        img_h = 2048
+                        img_w = int(img_h * (width / height))
+                        
+                    wms_params = {
+                        "SERVICE": "WMS",
+                        "VERSION": "1.1.1",
+                        "REQUEST": "GetMap",
+                        "FORMAT": "image/png",
+                        "TRANSPARENT": "TRUE",
+                        "LAYERS": village_code,
+                        "SRS": "EPSG:32643", # Assuming Zone 43N, need to be careful if it's 44N
+                        # We need to know the projection. The frontend sends coords in a specific projection.
+                        # `currentProj` in frontend decides this.
+                        # We should probably ask frontend for the EPSG code too.
+                        "STYLES": "",
+                        "WIDTH": str(img_w),
+                        "HEIGHT": str(img_h),
+                        "BBOX": f"{bbox[0]},{bbox[1]},{bbox[2]},{bbox[3]}"
+                    }
+                    
+                    # Check projection from request or default
+                    epsg = request.json.get('epsg', 'EPSG:32643')
+                    wms_params['SRS'] = epsg
+                    
+                    print(f"Fetching WMS Image for DXF: {wms_params}", flush=True)
+                    resp = requests.get("https://mahabhunakasha.mahabhumi.gov.in/WMS", params=wms_params, stream=True)
+                    if resp.status_code == 200:
+                        wms_image_data = resp.content
+                    else:
+                        print(f"WMS Fetch Failed: {resp.status_code}", flush=True)
+                except Exception as e:
+                    print(f"WMS Error: {e}", flush=True)
+
+            if wms_image_data:
+                # Embed in DXF
+                # 1. Add Image Definition
+                image_def = msp.add_image_def(filename='village_map.png', size_in_pixel=(img_w, img_h))
+                
+                # 2. Add Image Entity
+                # Position: Bottom-Left corner of BBOX
+                # Size: Width and Height in map units
+                msp.add_image(
+                    insert=(bbox[0], bbox[1]),
+                    size_in_units=(bbox[2]-bbox[0], bbox[3]-bbox[1]),
+                    image_def=image_def,
+                    rotation=0,
+                    dxfattribs={'layer': 'MAP_IMAGE'}
+                )
+                
+                # Move image to bottom (draw order) - ezdxf doesn't strictly support draw order manipulation easily in all viewers
+                # but adding it first or last might help. We added it last here.
+                # Actually, usually background should be added first? 
+                # DXF draw order is usually order of entities.
+                # Let's try to move it to the beginning of the modelspace if possible, or just rely on CAD layer management.
+                # For now, we append it.
+
+        # Save DXF
+        out_stream = io.StringIO()
+        doc.write(out_stream)
+        dxf_content = out_stream.getvalue()
+
+        # Create ZIP
+        zip_buffer = io.BytesIO()
+        with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
+            # Add DXF
+            zip_file.writestr("mahabhumi_export.dxf", dxf_content)
+            
+            # Add Image if available
+            if wms_image_data:
+                zip_file.writestr("village_map.png", wms_image_data)
+        
+        zip_buffer.seek(0)
+        
+        return Response(
+            zip_buffer,
+            mimetype='application/zip',
+            headers={
+                'Content-Disposition': 'attachment; filename="mahabhumi_export.zip"'
+            }
+        )
+        
+    except Exception as e:
+        print(f"DXF Export Error: {e}", flush=True)
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
+
 @app.route('/api/plot')
 def get_plot():
     """API endpoint to fetch detailed information and geometry for a specific plot."""
@@ -240,6 +521,82 @@ def get_plot():
         return jsonify(data)
     else:
         return jsonify({"error": "Plot not found or API error"}), 404
+
+@app.route('/api/plots/batch', methods=['POST'])
+def get_plots_batch():
+    """Batch API to check cache for multiple plots."""
+    print("API: Batch Get Plots", flush=True)
+    req_data = request.json
+    village_code = req_data.get('village_code')
+    plot_nos = req_data.get('plot_nos', [])
+    
+    if not village_code or not plot_nos:
+        return jsonify({"error": "Missing parameters"}), 400
+        
+    # Construct GIS codes and check cache
+    # We need to know the prefix (RVM/UVM) and district/taluka from somewhere.
+    # Actually, the cache key is just the GIS code.
+    # But we only have village_code (which is usually full 18 digit or similar?)
+    # Wait, the village code in the dropdown is just the village ID part?
+    # Let's check how `get_plot` constructs it.
+    # `get_plot` takes: cat, dist, tal, vil_code.
+    # Full GIS = Prefix + Dist + Tal + VilCode.
+    # The frontend `els.vil.value` seems to be the village code.
+    # But we need the full GIS code prefix to check the cache efficiently if we don't have it.
+    # However, the `scraper.get_plot_coordinates` uses `full_gis_code`.
+    # The cache `all_plots.json` is a list of plot objects.
+    # We can search the cache by `giscode` + `plotno`.
+    # Or simpler: The frontend sends the FULL GIS CODE if it has it?
+    # No, the frontend only has the village code selected in the dropdown.
+    # And the `get_plot` endpoint constructs the full code.
+    # We need the same logic here.
+    # We can accept `category`, `district`, `taluka` in the batch request too.
+    
+    cat = req_data.get('category', 'R')
+    dist = req_data.get('district')
+    tal = req_data.get('taluka')
+    
+    if not (dist and tal):
+         return jsonify({"error": "Missing district/taluka"}), 400
+
+    prefix = "RVM" if cat == 'R' else "UVM"
+    full_gis_code_base = f"{prefix}{dist}{tal}{village_code}"
+    
+    found_plots = []
+    missing_plots = []
+    
+    scraper = get_scraper()
+    
+    # We can optimize this by loading the cache once (it's already loaded in scraper)
+    # Scraper has `all_plots` list.
+    # We need to filter by giscode and plotno.
+    # Indexing would be better, but iterating is okay for now if not too huge.
+    # Actually, `scraper.get_plot_coordinates` checks cache.
+    # But it also fetches if missing. We only want to CHECK cache.
+    
+    # Let's peek into scraper's cache directly or add a method to scraper.
+    # Since I can't easily modify the scraper class instance method without reloading,
+    # I will access `scraper.all_plots` directly if possible.
+    # `all_plots` is a list of dicts.
+    
+    # Create a lookup for the requested village to speed up
+    # This might be slow if `all_plots` is huge.
+    # But `all_plots` is in memory.
+    
+    # Filter cache for this village first
+    village_cache = [p for p in scraper.all_plots if p.get('giscode') == full_gis_code_base]
+    village_map = {p['plotno']: p for p in village_cache}
+    
+    for plot_no in plot_nos:
+        if plot_no in village_map:
+            found_plots.append(village_map[plot_no])
+        else:
+            missing_plots.append(plot_no)
+            
+    return jsonify({
+        "found": found_plots,
+        "missing": missing_plots
+    })
 
 if __name__ == '__main__':
     print("Starting Mahabhunakasha Scraper UI...", flush=True)

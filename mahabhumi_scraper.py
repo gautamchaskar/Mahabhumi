@@ -1,11 +1,17 @@
 import requests
 import json
 import time
+import os
+import hashlib
+import threading
+from concurrent.futures import ThreadPoolExecutor
 
 class MahabhumiScraper:
     BASE_URL = "https://mahabhunakasha.mahabhumi.gov.in/rest"
+    CACHE_FILE = "cache/all_plots.json"
     
-    def __init__(self):
+    def __init__(self, auto_save=True):
+        self.auto_save = auto_save
         # Initialize a persistent session for cookie management
         self.session = requests.Session()
         self.session.headers.update({
@@ -14,20 +20,59 @@ class MahabhumiScraper:
             "Referer": "https://mahabhunakasha.mahabhumi.gov.in/27/index.html",
             "X-Requested-With": "XMLHttpRequest"
         })
-        # Removed the blocking initial request to prevent server hangs on startup
+        # Ensure cache directory exists for the single file
+        cache_dir = os.path.dirname(self.CACHE_FILE)
+        if not os.path.exists(cache_dir):
+            os.makedirs(cache_dir, exist_ok=True)
+            
+        # Initialize Cache
+        self.cache_lock = threading.Lock()
+        self.plot_cache = self._load_cache()
 
-    def _post(self, url, data, timeout=15):
+    def _load_cache(self):
+        """Loads the single cache file into a dictionary for O(1) access."""
+        if os.path.exists(self.CACHE_FILE):
+            try:
+                with open(self.CACHE_FILE, 'r') as f:
+                    data = json.load(f)
+                    # Convert list to dict keyed by unique ID
+                    cache_dict = {}
+                    for plot in data:
+                        # Assuming 'giscode' and 'plotno' are in the saved data
+                        # If not (legacy), we might need to reconstruct or skip
+                        # For now, we'll use a composite key if available, or just skip
+                        if 'giscode' in plot and 'plotno' in plot:
+                            key = f"{plot['giscode']}_{plot['plotno']}"
+                            cache_dict[key] = plot
+                    return cache_dict
+            except Exception as e:
+                print(f"Error loading cache: {e}")
+                return {}
+        return {}
+
+    def save_cache(self):
+        """Saves the cache dictionary as a JSON array."""
+        with self.cache_lock:
+            try:
+                # Convert dict values to list
+                plot_list = list(self.plot_cache.values())
+                with open(self.CACHE_FILE, 'w', encoding='utf-8') as f:
+                    json.dump(plot_list, f, indent=2, ensure_ascii=False)
+            except Exception as e:
+                print(f"Error saving cache: {e}")
+
+    def _post(self, url, data, headers=None, timeout=15):
         """
         Helper to handle the 302 cookie dance and ensure POST method is preserved.
         """
         try:
             # We don't allow automatic redirects because they often turn POST into GET (causing 405)
-            response = self.session.post(url, data=data, timeout=timeout, allow_redirects=False)
+            response = self.session.post(url, data=data, headers=headers, timeout=timeout, allow_redirects=False)
             
             # Handle the 302 cookie dance if necessary
             if response.status_code == 302:
                 print(f"Cookie challenge (302) on {url.split('/')[-1]} detected, retrying...", flush=True)
-                response = self.session.post(url, data=data, timeout=timeout)
+                response = self.session.post(url, data=data, headers=headers, timeout=timeout)
                 
             response.raise_for_status()
             return response
@@ -100,8 +145,14 @@ class MahabhumiScraper:
 
     def get_plot_coordinates(self, giscode, plot_number):
         """
-        Fetches geometry for a specific plot.
+        Fetches geometry for a specific plot with local caching.
         """
+        # Check memory cache first
+        cache_key = f"{giscode}_{plot_number}"
+        if cache_key in self.plot_cache:
+            print(f"Loading plot {plot_number} from cache...", flush=True)
+            return self.plot_cache[cache_key]
+
         url = f"{self.BASE_URL}/MapInfo/getPlotInfo"
         params = {
             "giscode": giscode,
@@ -110,20 +161,24 @@ class MahabhumiScraper:
         }
         print(f"Fetching Plot Coordinates: {giscode} - {plot_number}...", flush=True)
         
-        try:
-            # Send POST request to fetch plot details
-            response = self._post(url, params)
-            response.raise_for_status()
-            data = response.json()
-            if "the_geom" in data:
-                print(f"Plot {plot_number} Found!")
-                # Parse the 'info' string which contains Owner Name, Area, etc.
-                # Example format:
-                # Survey No. : 100\nTotal Area : 1.01\n...
-                if "info" in data and data["info"]:
-                    info_text = data["info"]
-                    parsed_records = []
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                # Send POST request to fetch plot details
+                # Increased timeout to 30s and using _post which handles 302
+                response = self._post(url, params, timeout=30)
+                response.raise_for_status()
+                data = response.json()
+                if "the_geom" in data:
+                    print(f"Plot {plot_number} Found!")
+                    # Parse the 'info' string which contains Owner Name, Area, etc.
+                    # Example format:
+                    # Survey No. : 100\nTotal Area : 1.01\n...
+                    if "info" in data and data["info"]:
+                        info_text = data["info"]
+                        parsed_records = []
                     
+                    # Split by the separator line
                     # Split by the separator line
                     chunks = info_text.split('---------------------------------')
                     
@@ -143,19 +198,50 @@ class MahabhumiScraper:
                     
                     data['parsed_records'] = parsed_records
 
-                # Rewrite infoLinks to use our local proxy
+                # Extract Report URL from infoLinks
                 if "infoLinks" in data and data["infoLinks"]:
-                    # Handle both variants and relative paths
-                    data["infoLinks"] = data["infoLinks"].replace("../signplotreport.jsp", "/api/report")
-                    data["infoLinks"] = data["infoLinks"].replace("signplotreport.jsp", "/api/report")
-                    data["infoLinks"] = data["infoLinks"].replace("signplotreportpublic.jsp", "/api/report")
+                    # Example: <br><a target="bhumap" href="/api/report?..." >Map Report</a><br/>
+                    # We want to extract the href value
+                    import re
+                    match = re.search(r'href=["\']([^"\']+)["\']', data["infoLinks"])
+                    if match:
+                        raw_url = match.group(1)
+                        # Ensure it points to our proxy
+                        if "signplotreport" in raw_url:
+                             # Replace legacy paths with our API proxy
+                             raw_url = raw_url.replace("../signplotreport.jsp", "/api/report")
+                             raw_url = raw_url.replace("signplotreport.jsp", "/api/report")
+                             raw_url = raw_url.replace("signplotreportpublic.jsp", "/api/report")
+                        data['report_url'] = raw_url
                     
-            # The raw data is already in 'data', so no extra work needed here.
-            # Just ensuring we return it.
-            return data
-        except Exception as e:
-            print(f"Error fetching plot {plot_number}: {e}")
-            return None
+                    # Remove the raw HTML field to clean up cache
+                    del data['infoLinks']
+                    
+                # Save to cache if plot found
+                if data and "the_geom" in data:
+                    # Add keys for cache reconstruction
+                    data['giscode'] = giscode
+                    data['plotno'] = plot_number
+                    
+                    # Update memory cache
+                    with self.cache_lock:
+                        self.plot_cache[cache_key] = data
+                    
+                    # Persist to disk only if auto_save is True
+                    if self.auto_save:
+                        self.save_cache()
+
+                return data
+            
+            except requests.exceptions.ReadTimeout:
+                print(f"Timeout fetching plot {plot_number} (Attempt {attempt+1}/{max_retries})", flush=True)
+                time.sleep(2) # Wait a bit before retrying
+            except Exception as e:
+                print(f"Error fetching plot {plot_number} (Attempt {attempt+1}/{max_retries}): {e}", flush=True)
+                time.sleep(1)
+            
+        print(f"Failed to fetch plot {plot_number} after {max_retries} attempts.")
+        return None
 
     def fetch_plot_list(self, district_code, taluka_code, village_code, category='R'):
         """
@@ -176,8 +262,13 @@ class MahabhumiScraper:
         print(f"Fetching Plot List for GIS Code: {gis_code}...")
         
         try:
-            response = self.session.post(url, data=params, timeout=15) # Found to be POST by subagent
-            response.raise_for_status()
+            # Update Referer to include GIS Code (Required by API)
+            headers = self.session.headers.copy()
+            headers["Referer"] = f"https://mahabhunakasha.mahabhumi.gov.in/27/index.html?giscode={gis_code}"
+            
+            # Use _post helper to handle 302s
+            response = self._post(url, params, headers=headers, timeout=15)
+            
             print(f"Success: Plot List Fetched ({len(response.json())} plots)")
             # Returns a list of strings: ["1", "2", "10", ...]
             return response.json()
@@ -185,7 +276,7 @@ class MahabhumiScraper:
             print(f"Error fetching plot list: {e}")
             return []
 
-    def fetch_village_boundaries(self, giscode, max_plots=9999):
+    def fetch_village_boundaries(self, giscode, max_plots=9999, max_workers=20):
         """
         Fetches geometries for all plots in a village (limited to max_plots for performance).
         Returns a list of dicts with plot_no and geometry.
@@ -209,20 +300,29 @@ class MahabhumiScraper:
         
         # Limit to max_plots to avoid timeout
         plots_to_fetch = plot_list[:max_plots]
-        print(f"Fetching geometries for {len(plots_to_fetch)} plots (limited from {len(plot_list)} total)...", flush=True)
+        print(f"Fetching geometries for {len(plots_to_fetch)} plots in parallel (Workers: {max_workers})...", flush=True)
         
         boundaries = []
-        for plot_no in plots_to_fetch:
+        
+        def fetch_single_plot(plot_no):
             try:
                 plot_data = self.get_plot_coordinates(giscode, plot_no)
                 if plot_data and 'the_geom' in plot_data:
-                    boundaries.append({
+                    return {
                         'plot_no': plot_no,
-                        'geometry': plot_data['the_geom']
-                    })
+                        'geometry': plot_data['the_geom'],
+                        'owner_info': plot_data.get('parsed_records', [])
+                    }
             except Exception as e:
                 print(f"Error fetching plot {plot_no}: {e}", flush=True)
-                continue
+            return None
+
+        # Use ThreadPoolExecutor for parallel fetching
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            results = list(executor.map(fetch_single_plot, plots_to_fetch))
+        
+        # Filter out None results
+        boundaries = [r for r in results if r]
         
         print(f"Successfully fetched {len(boundaries)} plot boundaries", flush=True)
         return boundaries
