@@ -1,0 +1,1301 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Mahabhunakasha Scraper</title>
+    <link
+      href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css"
+      rel="stylesheet"
+    />
+    <style>
+      body {
+        padding: 0;
+        overflow-x: hidden;
+        background-color: #f8f9fa;
+      }
+      .card {
+        margin-bottom: 0px;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        border-radius: 0;
+        border: none;
+      }
+      pre {
+        background: #eee;
+        padding: 15px;
+        border-radius: 5px;
+        max-height: 400px;
+        overflow: auto;
+      }
+      #loading {
+        display: none;
+      }
+      .sticky-sidebar {
+        position: -webkit-sticky;
+        position: sticky;
+        top: 0;
+        z-index: 1000;
+        height: 100vh;
+        max-height: 100vh;
+        overflow-y: auto;
+        border-radius: 0;
+        border-right: 1px solid #dee2e6; /* Add separation */
+        box-shadow: 2px 0 5px rgba(0, 0, 0, 0.05); /* Subtle shadow */
+      }
+      /* Full Screen Map Styles */
+      .fullscreen-map-container {
+        position: fixed !important;
+        top: 0;
+        left: 0;
+        width: 100vw;
+        height: 100vh;
+        z-index: 9999;
+        background: white;
+        margin: 0 !important;
+        border-radius: 0 !important;
+      }
+      .fullscreen-map-container .card-body {
+        height: calc(100vh - 50px) !important;
+      }
+      .fullscreen-map-container #mapid {
+        height: 100% !important;
+      }
+      /* Navbar Height Offset */
+      body {
+        padding-top: 56px;
+      }
+
+      /* Sticky Sidebar - Desktop Only */
+      @media (min-width: 768px) {
+        .sticky-sidebar {
+          position: sticky;
+          top: 56px;
+          height: calc(100vh - 56px);
+          max-height: calc(100vh - 56px);
+          overflow-y: auto;
+        }
+      }
+      /* Mobile Fallback */
+      @media (max-width: 767.98px) {
+        .sticky-sidebar {
+          height: auto !important;
+          max-height: none !important;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <!-- Navbar -->
+    <nav
+      class="navbar navbar-expand-lg navbar-dark bg-primary fixed-top shadow-sm"
+    >
+      <div class="container-fluid">
+        <a class="navbar-brand fw-bold" href="#">
+          <i class="fas fa-map-marked-alt me-2"></i>Mahabhunakasha Scraper
+        </a>
+        <span class="navbar-text small text-white-50">
+          Maharashtra Land Records Utility
+        </span>
+      </div>
+    </nav>
+
+    <div class="container-fluid px-0">
+      <!-- Remove horizontal padding -->
+      <div class="row g-0">
+        <!-- Remove gutters -->
+        <!-- Left Sidebar: Location Selection -->
+        <div class="col-md-3 col-lg-2 border-end">
+          <!-- Narrower sidebar (2) -->
+          <div class="card sticky-sidebar border-0 h-100 rounded-0">
+            <div class="card-header bg-white border-bottom py-3">
+              <h6 class="mb-0 fw-bold text-uppercase text-muted small ls-1">
+                <span class="badge bg-primary rounded-pill me-2">1</span>
+                Location
+              </h6>
+            </div>
+            <div class="card-body">
+              <div class="mb-3">
+                <label class="form-label">Category</label>
+                <select id="category" class="form-select">
+                  <option value="R">Rural</option>
+                  <option value="U">Urban</option>
+                </select>
+              </div>
+              <div class="mb-3">
+                <label class="form-label"
+                  >District
+                  <span
+                    id="loader-dist"
+                    class="spinner-border spinner-border-sm text-primary"
+                    style="display: none"
+                  ></span
+                ></label>
+                <select id="district" class="form-select" disabled>
+                  <option value="">Select District</option>
+                </select>
+              </div>
+              <div class="mb-3">
+                <label class="form-label"
+                  >Taluka
+                  <span
+                    id="loader-tal"
+                    class="spinner-border spinner-border-sm text-primary"
+                    style="display: none"
+                  ></span
+                ></label>
+                <select id="taluka" class="form-select" disabled>
+                  <option value="">Select Taluka</option>
+                </select>
+              </div>
+              <div class="mb-3">
+                <label class="form-label"
+                  >Village
+                  <span
+                    id="loader-vil"
+                    class="spinner-border spinner-border-sm text-primary"
+                    style="display: none"
+                  ></span
+                ></label>
+                <select id="village" class="form-select" disabled>
+                  <option value="">Select Village</option>
+                </select>
+              </div>
+
+              <!-- Step 2: Plot Selection -->
+              <div class="mb-3 border-top pt-3 mt-3">
+                <label
+                  class="form-label fw-bold small text-uppercase text-muted ls-1"
+                >
+                  <span class="badge bg-secondary rounded-pill me-1">2</span>
+                  Gat Number
+                  <span
+                    id="loader-plot"
+                    class="spinner-border spinner-border-sm text-primary"
+                    style="display: none"
+                  ></span>
+                </label>
+                <div class="input-group">
+                  <select id="plotNo" class="form-select" disabled>
+                    <option value="">Select Gat No...</option>
+                  </select>
+                  <button
+                    id="searchBtn"
+                    class="btn btn-primary shadow-sm"
+                    type="button"
+                    disabled
+                  >
+                    <i class="fas fa-search"></i>
+                  </button>
+                </div>
+                <div class="form-text small">
+                  Select from available Gat numbers
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Center: Results Panel -->
+        <div class="col-md-9 col-lg-10 bg-white h-100 min-vh-100 overflow-auto">
+          <!-- Main content -->
+          <div class="p-4">
+            <div id="loading" class="text-center py-5">
+              <div
+                class="spinner-border text-primary"
+                role="status"
+                style="width: 3rem; height: 3rem"
+              >
+                <span class="visually-hidden">Loading...</span>
+              </div>
+              <h5 class="mt-3 text-muted">Fetching official records...</h5>
+            </div>
+
+            <div id="resultArea" class="h-100">
+              <div
+                class="h-100 d-flex flex-column justify-content-center align-items-center text-center p-5 opacity-75"
+              >
+                <div
+                  class="bg-light rounded-circle d-inline-flex align-items-center justify-content-center mb-4"
+                  style="width: 120px; height: 120px"
+                >
+                  <i
+                    class="fas fa-map-marked-alt text-primary fa-4x opacity-50"
+                  ></i>
+                </div>
+                <h3 class="fw-light text-dark mb-2">Ready to Explore</h3>
+                <p class="text-muted lead fs-6">
+                  Follow the steps on the sidebars to locate logic.<br />
+                  <small
+                    ><strong>1. Select Village</strong> &rarr;
+                    <strong>2. Enter Plot No</strong></small
+                  >
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Leaflet CSS -->
+    <link
+      rel="stylesheet"
+      href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    />
+    <!-- FontAwesome -->
+    <link
+      rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css"
+    />
+
+    <!-- Libraries -->
+    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/proj4js/2.9.0/proj4.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/wicket/1.3.8/wicket.min.js"></script>
+
+    <script>
+      // Define Projections
+      // UTM Zone 43N (EPSG:32643) -> WGS84 (EPSG:4326)
+      proj4.defs(
+        "EPSG:32643",
+        "+proj=utm +zone=43 +datum=WGS84 +units=m +no_defs",
+      );
+
+      // Indian 1975 / UTM Zone 43N (EPSG:24343)
+      proj4.defs(
+        "EPSG:24343",
+        "+proj=utm +zone=43 +a=6377276.345 +b=6356075.41314024 +towgs84=210,814,289,0,0,0,0 +units=m +no_defs",
+      );
+
+      // Everest 1830 (Generic)
+      // Everest 1830 (Generic)
+      proj4.defs(
+        "EVEREST",
+        "+proj=longlat +a=6377276.345 +b=6356075.41314024 +no_defs",
+      );
+      // Raw WGS84
+      proj4.defs("EPSG:4326", "+proj=longlat +datum=WGS84 +no_defs");
+
+      // Maharashtra Specific (WGS 84 / Maharashtra - official state LCC)
+      proj4.defs(
+        "EPSG:7767",
+        "+proj=lcc +lat_0=18.88015774 +lon_0=76.75 +lat_1=16.625 +lat_2=21.125 +x_0=1000000 +y_0=1000000 +datum=WGS84 +units=m +no_defs +type=crs",
+      );
+
+      // New Requested Formats
+      // NAD83 (EPSG:4269)
+      proj4.defs(
+        "EPSG:4269",
+        "+proj=longlat +ellps=GRS80 +datum=NAD83 +no_defs",
+      );
+      // ETRS89 (EPSG:4258)
+      proj4.defs(
+        "EPSG:4258",
+        "+proj=longlat +ellps=GRS80 +towgs84=0,0,0,0,0,0,0 +no_defs",
+      );
+      // GRS80 (EPSG:4019)
+      proj4.defs("EPSG:4019", "+proj=longlat +ellps=GRS80 +no_defs");
+      // UTM Zone 42N (EPSG:32642)
+      proj4.defs(
+        "EPSG:32642",
+        "+proj=utm +zone=42 +datum=WGS84 +units=m +no_defs",
+      );
+      // UTM Zone 44N (EPSG:32644)
+      proj4.defs(
+        "EPSG:32644",
+        "+proj=utm +zone=44 +datum=WGS84 +units=m +no_defs",
+      );
+      // Web Mercator (EPSG:3857)
+      proj4.defs(
+        "EPSG:3857",
+        "+proj=merc +a=6378137 +b=6378137 +lat_ts=0.0 +lon_0=0.0 +x_0=0.0 +y_0=0 +k=1.0 +units=m +nadgrids=@null +wktext +no_defs",
+      );
+      // UPS North (EPSG:5041)
+      proj4.defs(
+        "EPSG:5041",
+        "+proj=ups +zone=north +datum=WGS84 +units=m +no_defs",
+      );
+
+      let currentProj = "EPSG:32643"; // Default
+      let manualOffsetX = 0.0;
+      let manualOffsetY = 0.0;
+
+      let map = null;
+
+      const els = {
+        cat: document.getElementById("category"),
+        dist: document.getElementById("district"),
+        tal: document.getElementById("taluka"),
+        vil: document.getElementById("village"),
+        plot: document.getElementById("plotNo"),
+        btn: document.getElementById("searchBtn"),
+        res: document.getElementById("resultArea"),
+        load: document.getElementById("loading"),
+        spinners: {
+          dist: document.getElementById("loader-dist"),
+          tal: document.getElementById("loader-tal"),
+          vil: document.getElementById("loader-vil"),
+          plot: document.getElementById("loader-plot"),
+        },
+      };
+
+      // Load Districts on Start
+      window.onload = loadDistricts;
+
+      els.cat.addEventListener("change", loadDistricts);
+      els.dist.addEventListener("change", loadTalukas);
+      els.tal.addEventListener("change", loadVillages);
+      els.vil.addEventListener("change", loadPlots);
+      els.btn.addEventListener("click", searchPlot);
+
+      // Removed keypress listener for select
+
+      function toggleSpinner(name, show) {
+        if (els.spinners[name])
+          els.spinners[name].style.display = show ? "inline-block" : "none";
+      }
+
+      function toggleFullScreen() {
+        const mapCard = document.getElementById("mapCard");
+        if (!mapCard) return;
+        mapCard.classList.toggle("fullscreen-map-container");
+        setTimeout(() => {
+          if (map) map.invalidateSize();
+        }, 300);
+      }
+
+      async function loadDistricts() {
+        resetSelects(["dist", "tal", "vil"]);
+        toggleSpinner("dist", true);
+        try {
+          const res = await axios.get(
+            `/api/districts?category=${els.cat.value}`,
+          );
+          const data = res.data;
+
+          populateSelect(els.dist, data, "25", "Pune");
+          els.dist.disabled = false;
+        } catch (e) {
+          console.error(e);
+        }
+        toggleSpinner("dist", false);
+      }
+
+      async function loadTalukas() {
+        resetSelects(["tal", "vil"]);
+        if (!els.dist.value) return;
+        toggleSpinner("tal", true);
+        try {
+          const res = await axios.get(
+            `/api/talukas/${els.dist.value}?category=${els.cat.value}`,
+          );
+          const data = res.data;
+
+          populateSelect(els.tal, data, "02", "Ambegaon");
+          els.tal.disabled = false;
+        } catch (e) {
+          console.error(e);
+        }
+        toggleSpinner("tal", false);
+      }
+
+      async function loadVillages() {
+        resetSelects(["vil"]);
+        if (!els.tal.value) return;
+        toggleSpinner("vil", true);
+        try {
+          const res = await axios.get(
+            `/api/villages/${els.dist.value}/${els.tal.value}?category=${els.cat.value}`,
+          );
+          const data = res.data;
+
+          populateSelect(els.vil, data, "272500020303690000", "Sakore");
+          els.vil.disabled = false;
+        } catch (e) {
+          console.error(e);
+        }
+        toggleSpinner("vil", false);
+      }
+
+      async function loadPlots() {
+        const plotSelect = document.getElementById("plotNo");
+        plotSelect.innerHTML = '<option value="">Loading...</option>';
+        plotSelect.disabled = true;
+        els.btn.disabled = true;
+
+        if (!els.vil.value) {
+          plotSelect.innerHTML = '<option value="">Select Plot...</option>';
+          return;
+        }
+
+        toggleSpinner("plot", true);
+
+        try {
+          const res = await axios.get(
+            `/api/plots/${els.dist.value}/${els.tal.value}/${els.vil.value}?category=${els.cat.value}`,
+          );
+          const data = res.data;
+
+          // Populate Dropdown
+          plotSelect.innerHTML = '<option value="">Select Plot...</option>';
+          if (data && data.length > 0) {
+            data.forEach((p) => {
+              const opt = document.createElement("option");
+              opt.value = p;
+              opt.textContent = p;
+              plotSelect.appendChild(opt);
+            });
+
+            // Default to "1" as requested
+            const defaultVal = "1";
+            // Check if "1" exists in the options
+            // (Note: data array contains strings)
+            if (data.includes(defaultVal)) {
+              plotSelect.value = defaultVal;
+            } else {
+              // Fallback to first if "1" not found? Or just select index 1
+              // The user specifically asked "DEFAULT IT TO 1".
+              // If 1 is not there, maybe don't select anything or select the first.
+              // I will try to select index 1 (the first actual option) if "1" is missing.
+              if (data.length > 0) plotSelect.selectedIndex = 1;
+            }
+
+            plotSelect.disabled = false;
+            els.btn.disabled = false;
+          } else {
+            plotSelect.innerHTML = '<option value="">No plots found</option>';
+          }
+        } catch (e) {
+          console.error("Error loading plots", e);
+          plotSelect.innerHTML = '<option value="">Error</option>';
+        }
+        toggleSpinner("plot", false);
+      }
+
+      async function searchPlot() {
+        if (!els.plot.value) return alert("Enter Plot Number");
+
+        showLoading(true);
+        try {
+          const params = {
+            category: els.cat.value,
+            district: els.dist.value,
+            taluka: els.tal.value,
+            village_code: els.vil.value,
+            plot_no: els.plot.value,
+          };
+
+          const apiRes = await axios.get("/api/plot", { params });
+          let res = { data: apiRes.data };
+
+          // Capture Selection Info
+          const catText = els.cat.options[els.cat.selectedIndex].text;
+          const distText = els.dist.options[els.dist.selectedIndex].text;
+          const talText = els.tal.options[els.tal.selectedIndex].text;
+          const vilText = els.vil.options[els.vil.selectedIndex].text;
+
+          let html = "";
+          if (res.data.the_geom) {
+            const records = res.data.parsed_records || [];
+
+            // Helper for formatting
+            const formatValue = (key, val) => {
+              if (!val) return "N/A";
+              // Add units for Area
+              if (
+                key.toLowerCase().includes("area") &&
+                !isNaN(parseFloat(val))
+              ) {
+                return `${val} Hectare`;
+              }
+              return val;
+            };
+
+            // Build cards for each record
+            let cardsHtml = "";
+            if (records.length > 0) {
+              cardsHtml +=
+                '<div class="table-responsive"><table class="table table-hover table-sm mb-0">';
+              cardsHtml +=
+                '<thead class="bg-light text-muted small text-uppercase"><tr><th>Field</th><th>Value</th></tr></thead><tbody>';
+              records.forEach((rec, index) => {
+                cardsHtml += `<tr class="table-light"><td colspan="2" class="fw-bold small text-muted text-uppercase pt-3 pb-1">Owner Record #${index + 1}</td></tr>`;
+                // Dynamic Iteration of all fields in record
+                for (const [key, val] of Object.entries(rec)) {
+                  // Skip empty keys
+                  if (!key.trim()) continue;
+                  cardsHtml += `
+                          <tr>
+                              <td class="text-secondary small fw-bold" style="width: 40%">${key}</td>
+                              <td class="small text-break">${formatValue(key, val)}</td>
+                          </tr>`;
+                }
+              });
+              cardsHtml += "</tbody></table></div>";
+            } else {
+              // Fallback: Display raw info text if available
+              if (res.data.info) {
+                cardsHtml = `
+                          <div class="alert alert-secondary small border-0 bg-light">
+                              <strong><i class="fas fa-file-alt"></i> Raw Owner Info:</strong>
+                              <pre class="mt-2 mb-0 text-muted" style="white-space: pre-wrap; background: transparent; padding: 0;">${res.data.info}</pre>
+                          </div>`;
+              } else {
+                cardsHtml =
+                  '<div class="alert alert-warning small border-0"><i class="fas fa-exclamation-triangle"></i> No owner info found.</div>';
+              }
+            }
+
+            // Generate Raw Attributes Table
+            let attributesHtml =
+              '<div class="table-responsive mb-3"><table class="table table-sm table-hover table-bordered mb-0">';
+            attributesHtml +=
+              '<thead class="bg-light text-muted small text-uppercase"><tr><th>Attribute</th><th>Value</th></tr></thead><tbody>';
+
+            // Sort keys for consistent display
+            const sortedKeys = Object.keys(res.data).sort();
+
+            for (const key of sortedKeys) {
+              // Skip huge geometry or internal parsed fields
+              if (
+                ["the_geom", "parsed_records", "parsed_info", "info"].includes(
+                  key,
+                )
+              )
+                continue;
+
+              let value = res.data[key];
+              // Handle null/undef
+              if (value === null || value === undefined)
+                value = '<span class="text-muted fst-italic">null</span>';
+
+              attributesHtml += `<tr><td class="small fw-bold text-nowrap text-secondary">${key}</td><td class="small text-break">${value}</td></tr>`;
+            }
+            attributesHtml += "</tbody></table></div>";
+
+            // Layout: Split View
+            html = `
+                <div class="row h-100 g-3">
+                    <!-- Left Col: Data Card -->
+                    <div class="col-md-5">
+                        <div class="card shadow-sm border h-100" style="max-height: 800px; overflow-y: auto;">
+                            <div class="card-header bg-white border-bottom py-3">
+                                <h6 class="mb-0 fw-bold text-uppercase text-muted small ls-1">
+                                    <span class="badge bg-success rounded-pill me-2">3</span> Result
+                                </h6>
+                            </div>
+                            <div class="card-body">
+                                <div class="mb-4 text-center">
+                                    <h1 class="display-6 text-primary fw-bold mb-1">Gat No ${res.data.plotno}</h1>
+                                    <span class="badge bg-light text-dark border mb-2">${res.data.giscode}</span>
+
+                                    <div class="small text-muted mt-2 text-start bg-light p-3 rounded border">
+                                      <div class="mb-1"><strong>Category:</strong> ${els.cat.value} ${catText}</div>
+                                      <div class="mb-1"><strong>District:</strong> ${els.dist.value} ${distText}</div>
+                                      <div class="mb-1"><strong>Taluka:</strong> ${els.tal.value} ${talText}</div>
+                                      <div class="mb-0"><strong>Village:</strong> <span class="text-primary font-monospace">${els.vil.value}</span> ${vilText}</div>
+                                    </div>
+                                    <div id="coord-summary" class="mt-3 p-2 bg-dark text-warning rounded-pill small font-monospace d-inline-block shadow-sm">
+                                      <i class="fas fa-crosshairs me-2"></i>Calibrating...
+                                    </div>
+
+                                    ${
+                                      res.data.infoLinks
+                                        ? `
+                                    <div class="mt-3 d-flex justify-content-center gap-2" id="report-links">
+                                        ${res.data.infoLinks.replace(/<a /g, '<a class="btn btn-outline-primary btn-sm rounded-pill px-3 shadow-sm" ')}
+                                    </div>
+                                    `
+                                        : ""
+                                    }
+                                </div>
+
+                                <h6 class="text-uppercase small fw-bold text-muted border-bottom pb-2 mb-3">
+                                    <i class="fas fa-users me-2"></i>Ownership Details
+                                </h6>
+                                ${cardsHtml}
+
+                                <h6 class="text-uppercase small fw-bold text-muted border-bottom pb-2 mt-4 mb-3">
+                                    <i class="fas fa-list me-2"></i>Full Attributes
+                                </h6>
+                                ${attributesHtml}
+
+                                <div class="d-grid gap-2 mt-3">
+                                  <button class="btn btn-outline-secondary btn-sm" type="button" data-bs-toggle="collapse" data-bs-target="#rawDataCollapse">
+                                      <i class="fas fa-code"></i> Show Raw JSON
+                                  </button>
+                                </div>
+                                 <div class="collapse mt-2" id="rawDataCollapse">
+                                    <pre class="bg-dark text-light p-3 rounded small" style="max-height: 200px;">${JSON.stringify(res.data, null, 2)}</pre>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                  <!-- Right Col: Map -->
+                  <div class="col-md-7">
+                      <div id="mapCard" class="card shadow border-0 h-100">
+                           <div class="card-header bg-white border-bottom py-2 d-flex justify-content-between align-items-center">
+                              <div class="d-flex align-items-center">
+                                  <i class="fas fa-globe-asia text-primary me-2"></i>
+                                  <h6 class="mb-0 fw-bold text-muted">Map Visualization</h6>
+                              </div>
+
+                              <div class="d-flex gap-2">
+                                <!-- Projections -->
+                                <div class="input-group input-group-sm">
+                                    <span class="input-group-text bg-light border-end-0"><i class="fas fa-ruler-combined text-muted"></i></span>
+                                    <select class="form-select border-start-0 ps-0" onchange="toggleProjection(this.value)" title="Coordinate Projection" style="max-width: 180px; font-size: 0.85rem;">
+                                        <option value="EPSG:32643">UTM Zone 43N (West MH)</option>
+                                        <option value="EPSG:32644">UTM Zone 44N (East MH)</option>
+                                    </select>
+                                </div>
+
+                                <!-- Calibration -->
+                                <div class="btn-group btn-group-sm">
+                                    <button type="button" class="btn btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
+                                        <i class="fas fa-crosshairs"></i> Calibrate
+                                    </button>
+                                    <ul class="dropdown-menu dropdown-menu-end p-3 shadow" style="width: 200px;">
+                                        <li><h6 class="dropdown-header">Manual Offset</h6></li>
+                                        <li class="mb-3">
+                                            <label class="form-label small text-muted mb-1 d-flex justify-content-between">
+                                              X Offset (Longitude)
+                                              <span id="off-x-val" class="fw-bold text-primary">0</span>
+                                            </label>
+                                            <div class="input-group input-group-sm mb-1">
+                                                <button class="btn btn-outline-primary" onclick="nudge('x', -0.0001)">-10m</button>
+                                                <button class="btn btn-outline-primary" onclick="nudge('x', -0.00001)">-1m</button>
+                                                <button class="btn btn-outline-primary" onclick="nudge('x', 0.00001)">+1m</button>
+                                                <button class="btn btn-outline-primary" onclick="nudge('x', 0.0001)">+10m</button>
+                                            </div>
+                                        </li>
+                                        <li>
+                                            <label class="form-label small text-muted mb-1 d-flex justify-content-between">
+                                              Y Offset (Latitude)
+                                              <span id="off-y-val" class="fw-bold text-primary">0</span>
+                                            </label>
+                                            <div class="input-group input-group-sm">
+                                                <button class="btn btn-outline-primary" onclick="nudge('y', -0.0001)">-10m</button>
+                                                <button class="btn btn-outline-primary" onclick="nudge('y', -0.00001)">-1m</button>
+                                                <button class="btn btn-outline-primary" onclick="nudge('y', 0.00001)">+1m</button>
+                                                <button class="btn btn-outline-primary" onclick="nudge('y', 0.0001)">+10m</button>
+                                            </div>
+                                        </li>
+                                        <li class="mt-3">
+                                          <button class="btn btn-sm btn-link text-danger w-100 p-0" onclick="resetOffsets()">Reset All</button>
+                                        </li>
+                                    </ul>
+                                </div>
+
+                                <!-- Toggles -->
+                                <div class="btn-group btn-group-sm">
+                                    <button class="btn btn-outline-secondary" onclick="toggleVillageMap()" data-bs-toggle="tooltip" title="Show All Plots">
+                                        <i class="fas fa-layer-group"></i>
+                                    </button>
+                                    <button class="btn btn-outline-secondary" onclick="toggleFullScreen()" data-bs-toggle="tooltip" title="Full Screen">
+                                        <i class="fas fa-expand"></i>
+                                    </button>
+                                </div>
+                              </div>
+                           </div>
+                           <div class="card-body p-0 position-relative">
+                                <div id="mapid" style="height: 600px; width: 100%;"></div>
+                           </div>
+                      </div>
+                  </div>
+              </div>
+            `;
+
+            els.res.innerHTML = html;
+
+            // Initialize Map with slight delay to ensure DOM is ready
+            setTimeout(() => {
+              initMap(res.data.the_geom);
+              // Store current GIS code for Village Map
+              window.currentGisCode = res.data.giscode;
+            }, 100);
+          } else {
+            // ... Error handling ...
+            html = `<div class="alert alert-warning">Plot found but no geometry available.</div>`;
+            els.res.innerHTML = html;
+          }
+        } catch (e) {
+          console.error(e);
+          els.res.innerHTML = `<div class="alert alert-danger">Error: ${
+            e.response?.data?.error || e.message
+          }</div>`;
+        }
+        showLoading(false);
+      }
+
+      function toggleProjection(val) {
+        currentProj = val;
+        refreshMap();
+      }
+
+      function updateOffset(axis, val) {
+        const v = parseFloat(val);
+        if (!isNaN(v)) {
+          if (axis === "x") manualOffsetX = v;
+          if (axis === "y") manualOffsetY = v;
+
+          // Update display
+          document.getElementById(`off-${axis}-val`).textContent = v.toFixed(6);
+          refreshMap();
+        }
+      }
+
+      function nudge(axis, delta) {
+        if (axis === "x") manualOffsetX += delta;
+        if (axis === "y") manualOffsetY += delta;
+
+        // Update display
+        document.getElementById(`off-${axis}-val`).textContent = (
+          axis === "x" ? manualOffsetX : manualOffsetY
+        ).toFixed(6);
+        refreshMap();
+      }
+
+      function resetOffsets() {
+        manualOffsetX = 0;
+        manualOffsetY = 0;
+        document.getElementById(`off-x-val`).textContent = "0";
+        document.getElementById(`off-y-val`).textContent = "0";
+        refreshMap();
+      }
+
+      function copyText(text) {
+        navigator.clipboard.writeText(text).then(() => {
+          alert("Coordinates copied to clipboard!");
+        });
+      }
+
+      function refreshMap() {
+        if (map && window.lastWkt) {
+          console.log(
+            "Re-rendering:",
+            currentProj,
+            manualOffsetX,
+            manualOffsetY,
+          );
+          initMap(window.lastWkt);
+        }
+      }
+
+      function downloadVillageMap() {
+        if (!window.currentGisCode) {
+          alert("No plot loaded. Please search for a plot first.");
+          return;
+        }
+
+        // Trigger download
+        const downloadUrl = `/api/download_village_map/${window.currentGisCode}`;
+        window.location.href = downloadUrl;
+      }
+
+      let villageBoundariesLayer = null;
+
+      function initMap(wkt) {
+        window.lastWkt = wkt;
+
+        if (map) {
+          map.remove();
+          map = null;
+        }
+
+        // Create Map
+        map = L.map("mapid").setView([19.75, 75.71], 7); // Center of MH
+
+        // Layers
+        const osmLayer = L.tileLayer(
+          "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+          {
+            attribution: "© OpenStreetMap",
+          },
+        );
+
+        const satelliteLayer = L.tileLayer(
+          "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+          {
+            attribution:
+              "Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community",
+          },
+        );
+
+        // Add Default Layer (Satellite)
+        satelliteLayer.addTo(map);
+
+        // Layer Control
+        const baseMaps = {
+          "Satellite (Esri)": satelliteLayer,
+          OpenStreetMap: osmLayer,
+        };
+        L.control.layers(baseMaps).addTo(map);
+
+        // Parse WKT
+        const wktObj = new Wkt.Wkt();
+        try {
+          wktObj.read(wkt);
+          let geoJson = wktObj.toJson();
+
+          // Transform Coordinates
+          const transformCoords = (coords) => {
+            if (typeof coords[0] === "number") {
+              // Point [x, y]
+              let ll;
+              if (currentProj === "EPSG:4326") {
+                ll = [coords[0], coords[1]];
+              } else if (currentProj === "EVEREST") {
+                // Manual simple check or proj4
+                ll = proj4("EVEREST", "EPSG:4326", coords);
+              } else {
+                // Standard UTM Projections
+                ll = proj4(currentProj, "EPSG:4326", coords);
+              }
+              // Apply Manual Offset (LatLng)
+              return [ll[0] + manualOffsetX, ll[1] + manualOffsetY];
+            }
+            return coords.map((c) => transformCoords(c));
+          };
+
+          if (geoJson.coordinates) {
+            geoJson.coordinates = transformCoords(geoJson.coordinates);
+          }
+
+          // Add to Map
+          window.currentPolygonLayer = L.geoJSON(geoJson, {
+            style: {
+              color: "#0d6efd",
+              weight: 3,
+              fillOpacity: 0.2,
+            },
+          }).addTo(map);
+
+          // Plot Points on Border
+          let centerSum = { lat: 0, lng: 0, count: 0 };
+          const traverse = (arr) => {
+            if (
+              Array.isArray(arr) &&
+              arr.length === 2 &&
+              typeof arr[0] === "number"
+            ) {
+              // Found a coordinate pair [lng, lat]
+              const lng = arr[0];
+              const lat = arr[1];
+
+              centerSum.lat += lat;
+              centerSum.lng += lng;
+              centerSum.count++;
+
+              L.circleMarker([lat, lng], {
+                radius: 4,
+                fillColor: "#dc3545",
+                color: "#fff",
+                weight: 1,
+                opacity: 1,
+                fillOpacity: 0.8,
+              }).addTo(map).bindPopup(`
+                    <div class="text-center">
+                      <div class="small fw-bold mb-1">Point Coordinate</div>
+                      <div class="font-monospace mb-2" id="pop-coord-${centerSum.count}">${lat.toFixed(6)}, ${lng.toFixed(6)}</div>
+                      <button class="btn btn-primary btn-sm py-0 px-2" onclick="copyText('${lat.toFixed(6)}, ${lng.toFixed(6)}')">
+                        <i class="fas fa-copy"></i> Copy
+                      </button>
+                    </div>
+                  `);
+              return;
+            }
+            if (Array.isArray(arr)) {
+              arr.forEach((item) => traverse(item));
+            }
+          };
+
+          traverse(geoJson.coordinates);
+
+          // Update Summary Card
+          if (centerSum.count > 0) {
+            const avgLat = (centerSum.lat / centerSum.count).toFixed(6);
+            const avgLng = (centerSum.lng / centerSum.count).toFixed(6);
+            const elSum = document.getElementById("coord-summary");
+            if (elSum) {
+              elSum.innerHTML = `<i class="fas fa-crosshairs me-2"></i>Center: ${avgLat}, ${avgLng}`;
+            }
+          }
+          // Fit Bounds
+          map.fitBounds(window.currentPolygonLayer.getBounds());
+        } catch (err) {
+          console.error("WKT Error:", err);
+        }
+      }
+
+      function populateSelect(
+        el,
+        data,
+        preferredCode = null,
+        preferredText = null,
+      ) {
+        // Data format: [{ code: "01", value: "Name" }, ...]
+        el.innerHTML = '<option value="">Select...</option>';
+        data.forEach((item) => {
+          const opt = document.createElement("option");
+          opt.value = item.code;
+          opt.textContent = item.value;
+          el.appendChild(opt);
+        });
+
+        // Auto-select preference or first value if available
+        if (data.length > 0) {
+          let index = 1; // Default to first item
+
+          // Try to find preferred item by Code first, then Text
+          if (preferredCode) {
+            const foundIndex = data.findIndex((d) => d.code === preferredCode);
+            if (foundIndex !== -1) {
+              index = foundIndex + 1;
+            }
+          } else if (preferredText) {
+            const foundIndex = data.findIndex((d) =>
+              d.value.toLowerCase().includes(preferredText.toLowerCase()),
+            );
+            if (foundIndex !== -1) {
+              index = foundIndex + 1; // +1 because of "Select..." option
+            }
+          }
+
+          el.selectedIndex = index;
+          // Trigger change event to load next level
+          el.dispatchEvent(new Event("change"));
+        }
+      }
+
+      function resetSelects(keys) {
+        keys.forEach((k) => {
+          els[k].innerHTML = '<option value="">Select...</option>';
+          els[k].disabled = true;
+        });
+        els.btn.disabled = true;
+      }
+
+      function showLoading(show) {
+        els.load.style.display = show ? "block" : "none";
+        els.res.style.display = show ? "none" : "block";
+      }
+    </script>
+  </body>
+</html>
+let villageBoundariesLayer = null;
+async function toggleVillageMap() {
+  if (!map) return;
+
+  // If already showing, remove the boundaries
+  if (villageBoundariesLayer) {
+    map.removeLayer(villageBoundariesLayer);
+    villageBoundariesLayer = null;
+    return;
+  }
+
+  if (!window.currentGisCode) {
+    alert("No plot loaded. Please search for a plot first.");
+    return;
+  }
+
+  try {
+    // Show loading indicator
+    const btn = event.target.closest("button");
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+
+    // Create a layer group for all village boundaries
+    villageBoundariesLayer = L.layerGroup().addTo(map);
+
+    // First, get the list of all plots in the village
+    const giscode = window.currentGisCode;
+    const category = giscode.startsWith("RVM") ? "R" : "V";
+    const district = giscode.substring(3, 5);
+    const taluka = giscode.substring(5, 7);
+    const village = giscode.substring(7);
+
+    const plotListResponse = await axios.get(
+      `/api/plots/${district}/${taluka}/${village}?category=${category}`,
+    );
+    const plotNumbers = plotListResponse.data;
+
+    if (!plotNumbers || plotNumbers.length === 0) {
+      alert("No plots found for this village.");
+      btn.disabled = false;
+      btn.innerHTML = '<i class="fas fa-layer-group"></i>';
+      map.removeLayer(villageBoundariesLayer);
+      villageBoundariesLayer = null;
+      return;
+    }
+
+    console.log(`Loading ${plotNumbers.length} plots progressively...`);
+    let loadedCount = 0;
+
+    // Load each plot one by one
+    for (const plotNo of plotNumbers) {
+      try {
+        // Fetch individual plot
+        const plotResponse = await axios.get(
+          `/api/plot?category=${category}&district=${district}&taluka=${taluka}&village_code=${village}&plot_no=${plotNo}`,
+        );
+
+        const plotData = plotResponse.data;
+
+        if (plotData && plotData.the_geom) {
+          // Draw the boundary immediately
+          const wktObj = new Wkt.Wkt();
+          wktObj.read(plotData.the_geom);
+          let geoJson = wktObj.toJson();
+
+          // Transform coordinates
+          const transformCoords = (coords) => {
+            if (typeof coords[0] === "number") {
+              let ll;
+              if (currentProj === "EPSG:4326") {
+                ll = [coords[0], coords[1]];
+              } else if (currentProj === "EVEREST") {
+                ll = proj4("EVEREST", "EPSG:4326", coords);
+              } else {
+                ll = proj4(currentProj, "EPSG:4326", coords);
+              }
+              return [ll[0] + manualOffsetX, ll[1] + manualOffsetY];
+            }
+            return coords.map((c) => transformCoords(c));
+          };
+
+          if (geoJson.coordinates) {
+            geoJson.coordinates = transformCoords(geoJson.coordinates);
+          }
+
+          // Draw boundary
+          const boundary = L.geoJSON(geoJson, {
+            style: {
+              color: "#333",
+              weight: 2,
+              fillOpacity: 0,
+              opacity: 0.8,
+            },
+          });
+
+          boundary.bindPopup(`<b>Gat No:</b> ${plotNo}`);
+          boundary.addTo(villageBoundariesLayer);
+
+          loadedCount++;
+          // Update button with progress
+          btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> ${loadedCount}/${plotNumbers.length}`;
+        }
+      } catch (e) {
+        console.error(`Error loading plot ${plotNo}:`, e);
+      }
+    }
+
+    // Ensure selected plot stays on top
+    if (window.currentPolygonLayer) {
+      window.currentPolygonLayer.bringToFront();
+    }
+
+    // Restore button
+    btn.disabled = false;
+    btn.innerHTML = '<i class="fas fa-layer-group"></i>';
+    console.log(`Finished loading ${loadedCount} plots`);
+  } catch (error) {
+    console.error("Error loading village boundaries:", error);
+    alert("Failed to load village boundaries. Please try again.");
+    const btn = event.target.closest("button");
+    btn.disabled = false;
+    btn.innerHTML = '<i class="fas fa-layer-group"></i>';
+  }
+}
+
+      function initMap(wkt) {
+        window.lastWkt = wkt;
+
+        if (map) {
+          map.remove();
+          map = null;
+        }
+
+        // Create Map
+        map = L.map("mapid").setView([19.75, 75.71], 7); // Center of MH
+
+        // Layers
+        const osmLayer = L.tileLayer(
+          "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+          {
+            attribution: "© OpenStreetMap",
+          },
+        );
+
+        const satelliteLayer = L.tileLayer(
+          "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+          {
+            attribution:
+              "Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community",
+          },
+        );
+
+        // Add Default Layer (Satellite)
+        satelliteLayer.addTo(map);
+
+        // Layer Control
+        const baseMaps = {
+          "Satellite (Esri)": satelliteLayer,
+          OpenStreetMap: osmLayer,
+        };
+        L.control.layers(baseMaps).addTo(map);
+
+        // Parse WKT
+        const wktObj = new Wkt.Wkt();
+        try {
+          wktObj.read(wkt);
+          let geoJson = wktObj.toJson();
+
+          // Transform Coordinates
+          const transformCoords = (coords) => {
+            if (typeof coords[0] === "number") {
+              // Point [x, y]
+              let ll;
+              if (currentProj === "EPSG:4326") {
+                ll = [coords[0], coords[1]];
+              } else if (currentProj === "EVEREST") {
+                // Manual simple check or proj4
+                ll = proj4("EVEREST", "EPSG:4326", coords);
+              } else {
+                // Standard UTM Projections
+                ll = proj4(currentProj, "EPSG:4326", coords);
+              }
+              // Apply Manual Offset (LatLng)
+              return [ll[0] + manualOffsetX, ll[1] + manualOffsetY];
+            }
+            return coords.map((c) => transformCoords(c));
+          };
+
+          if (geoJson.coordinates) {
+            geoJson.coordinates = transformCoords(geoJson.coordinates);
+          }
+
+          // Add to Map
+          window.currentPolygonLayer = L.geoJSON(geoJson, {
+            style: {
+              color: "#0d6efd",
+              weight: 3,
+              fillOpacity: 0.2,
+            },
+          }).addTo(map);
+
+          // Plot Points on Border
+          let centerSum = { lat: 0, lng: 0, count: 0 };
+          const traverse = (arr) => {
+            if (
+              Array.isArray(arr) &&
+              arr.length === 2 &&
+              typeof arr[0] === "number"
+            ) {
+              // Found a coordinate pair [lng, lat]
+              const lng = arr[0];
+              const lat = arr[1];
+
+              centerSum.lat += lat;
+              centerSum.lng += lng;
+              centerSum.count++;
+
+              L.circleMarker([lat, lng], {
+                radius: 4,
+                fillColor: "#dc3545",
+                color: "#fff",
+                weight: 1,
+                opacity: 1,
+                fillOpacity: 0.8,
+              }).addTo(map).bindPopup(`
+                    <div class="text-center">
+                      <div class="small fw-bold mb-1">Point Coordinate</div>
+                      <div class="font-monospace mb-2" id="pop-coord-${centerSum.count}">${lat.toFixed(6)}, ${lng.toFixed(6)}</div>
+                      <button class="btn btn-primary btn-sm py-0 px-2" onclick="copyText('${lat.toFixed(6)}, ${lng.toFixed(6)}')">
+                        <i class="fas fa-copy"></i> Copy
+                      </button>
+                    </div>
+                  `);
+              return;
+            }
+            if (Array.isArray(arr)) {
+              arr.forEach((item) => traverse(item));
+            }
+          };
+
+          traverse(geoJson.coordinates);
+
+          // Update Summary Card
+          if (centerSum.count > 0) {
+            const avgLat = (centerSum.lat / centerSum.count).toFixed(6);
+            const avgLng = (centerSum.lng / centerSum.count).toFixed(6);
+            const elSum = document.getElementById("coord-summary");
+            if (elSum) {
+              elSum.innerHTML = `<i class="fas fa-crosshairs me-2"></i>Center: ${avgLat}, ${avgLng}`;
+            }
+          }
+          // Fit Bounds
+          map.fitBounds(window.currentPolygonLayer.getBounds());
+        } catch (err) {
+          console.error("WKT Error:", err);
+        }
+      }
+
+      function populateSelect(
+        el,
+        data,
+        preferredCode = null,
+        preferredText = null,
+      ) {
+        // Data format: [{ code: "01", value: "Name" }, ...]
+        el.innerHTML = '<option value="">Select...</option>';
+        data.forEach((item) => {
+          const opt = document.createElement("option");
+          opt.value = item.code;
+          opt.textContent = item.value;
+          el.appendChild(opt);
+        });
+
+        // Auto-select preference or first value if available
+        if (data.length > 0) {
+          let index = 1; // Default to first item
+
+          // Try to find preferred item by Code first, then Text
+          if (preferredCode) {
+            const foundIndex = data.findIndex((d) => d.code === preferredCode);
+            if (foundIndex !== -1) {
+              index = foundIndex + 1;
+            }
+          } else if (preferredText) {
+            const foundIndex = data.findIndex((d) =>
+              d.value.toLowerCase().includes(preferredText.toLowerCase()),
+            );
+            if (foundIndex !== -1) {
+              index = foundIndex + 1; // +1 because of "Select..." option
+            }
+          }
+
+          el.selectedIndex = index;
+          // Trigger change event to load next level
+          el.dispatchEvent(new Event("change"));
+        }
+      }
+
+      function resetSelects(keys) {
+        keys.forEach((k) => {
+          els[k].innerHTML = '<option value="">Select...</option>';
+          els[k].disabled = true;
+        });
+        els.btn.disabled = true;
+      }
+
+      function showLoading(show) {
+        els.load.style.display = show ? "block" : "none";
+        els.res.style.display = show ? "none" : "block";
+      }
+    </script>
+  </body>
+</html>

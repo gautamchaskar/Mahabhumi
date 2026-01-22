@@ -1,0 +1,899 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Mahabhunakasha Scraper</title>
+    <link
+      href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css"
+      rel="stylesheet"
+    />
+    <style>
+      body {
+        padding: 0;
+        overflow-x: hidden;
+        background-color: #f8f9fa;
+      }
+      .card {
+        margin-bottom: 0px;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        border-radius: 0;
+        border: none;
+      }
+      pre {
+        background: #eee;
+        padding: 15px;
+        border-radius: 5px;
+        max-height: 400px;
+        overflow: auto;
+      }
+      #loading {
+        display: none;
+      }
+      .sticky-sidebar {
+        position: -webkit-sticky;
+        position: sticky;
+        top: 0;
+        z-index: 1000;
+        height: 100vh;
+        max-height: 100vh;
+        overflow-y: auto;
+        border-radius: 0;
+        border-right: 1px solid #dee2e6;
+        box-shadow: 2px 0 5px rgba(0, 0, 0, 0.05);
+      }
+      .fullscreen-map-container {
+        position: fixed !important;
+        top: 0;
+        left: 0;
+        width: 100vw;
+        height: 100vh;
+        z-index: 9999;
+        background: white;
+        margin: 0 !important;
+        border-radius: 0 !important;
+      }
+      .fullscreen-map-container .card-body {
+        height: calc(100vh - 50px) !important;
+      }
+      .fullscreen-map-container #mapid {
+        height: 100% !important;
+      }
+      body {
+        padding-top: 56px;
+      }
+      @media (min-width: 768px) {
+        .sticky-sidebar {
+          position: sticky;
+          top: 56px;
+          height: calc(100vh - 56px);
+          max-height: calc(100vh - 56px);
+          overflow-y: auto;
+        }
+      }
+      @media (max-width: 767.98px) {
+        .sticky-sidebar {
+          height: auto !important;
+          max-height: none !important;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <!-- Navbar -->
+    <nav
+      class="navbar navbar-expand-lg navbar-dark bg-primary fixed-top shadow-sm"
+    >
+      <div class="container-fluid">
+        <a class="navbar-brand fw-bold" href="#">
+          <i class="fas fa-map-marked-alt me-2"></i>Mahabhunakasha Scraper
+        </a>
+        <span class="navbar-text small text-white-50">
+          Maharashtra Land Records Utility
+        </span>
+      </div>
+    </nav>
+
+    <div class="container-fluid px-0">
+      <div class="row g-0">
+        <!-- Left Sidebar: Location Selection -->
+        <div class="col-md-3 col-lg-2 border-end">
+          <div class="card sticky-sidebar border-0 h-100 rounded-0">
+            <div class="card-header bg-white border-bottom py-3">
+              <h6 class="mb-0 fw-bold text-uppercase text-muted small ls-1">
+                <span class="badge bg-primary rounded-pill me-2">1</span>
+                Location
+              </h6>
+            </div>
+            <div class="card-body">
+              <div class="mb-3">
+                <label class="form-label">Category</label>
+                <select id="category" class="form-select">
+                  <option value="R">Rural</option>
+                  <option value="U">Urban</option>
+                </select>
+              </div>
+              <div class="mb-3">
+                <label class="form-label"
+                  >District
+                  <span
+                    id="loader-dist"
+                    class="spinner-border spinner-border-sm text-primary"
+                    style="display: none"
+                  ></span
+                ></label>
+                <select id="district" class="form-select" disabled>
+                  <option value="">Select District</option>
+                </select>
+              </div>
+              <div class="mb-3">
+                <label class="form-label"
+                  >Taluka
+                  <span
+                    id="loader-tal"
+                    class="spinner-border spinner-border-sm text-primary"
+                    style="display: none"
+                  ></span
+                ></label>
+                <select id="taluka" class="form-select" disabled>
+                  <option value="">Select Taluka</option>
+                </select>
+              </div>
+              <div class="mb-3">
+                <label class="form-label"
+                  >Village
+                  <span
+                    id="loader-vil"
+                    class="spinner-border spinner-border-sm text-primary"
+                    style="display: none"
+                  ></span
+                ></label>
+                <select id="village" class="form-select" disabled>
+                  <option value="">Select Village</option>
+                </select>
+              </div>
+
+              <!-- Step 2: Plot Selection -->
+              <div class="mb-3 border-top pt-3 mt-3">
+                <label
+                  class="form-label fw-bold small text-uppercase text-muted ls-1"
+                >
+                  <span class="badge bg-secondary rounded-pill me-1">2</span>
+                  Gat Number
+                  <span
+                    id="loader-plot"
+                    class="spinner-border spinner-border-sm text-primary"
+                    style="display: none"
+                  ></span>
+                </label>
+                <div class="input-group">
+                  <select id="plotNo" class="form-select" disabled>
+                    <option value="">Select Gat No...</option>
+                  </select>
+                  <button
+                    id="searchBtn"
+                    class="btn btn-primary shadow-sm"
+                    type="button"
+                    disabled
+                  >
+                    <i class="fas fa-search"></i>
+                  </button>
+                  <button
+                    id="addPlotBtn"
+                    class="btn btn-success shadow-sm"
+                    type="button"
+                    disabled
+                    title="Add current to List"
+                  >
+                    <i class="fas fa-plus"></i>
+                  </button>
+                  <button
+                    id="addAllPlotsBtn"
+                    class="btn btn-info shadow-sm text-white"
+                    type="button"
+                    disabled
+                    title="Add ALL available to List"
+                  >
+                    <i class="fas fa-plus-circle"></i> Add All
+                  </button>
+                </div>
+                <div class="form-text small">
+                  Select from available Gat numbers
+                </div>
+              </div>
+
+              <!-- Step 3: Selected Plots (Multi-Plot) -->
+              <div
+                id="multiPlotSection"
+                class="mb-3 border-top pt-3 mt-3"
+                style="display: none"
+              >
+                <label
+                  class="form-label fw-bold small text-uppercase text-muted ls-1"
+                >
+                  <span class="badge bg-success rounded-pill me-1">3</span>
+                  Selected Plots
+                </label>
+                <div id="selectedPlotsList" class="d-flex flex-wrap gap-1 mb-2">
+                  <!-- Badges will appear here -->
+                </div>
+                <div class="d-grid gap-2">
+                  <button
+                    id="plotSelectedBtn"
+                    class="btn btn-success btn-sm shadow-sm"
+                    type="button"
+                  >
+                    <i class="fas fa-layer-group me-1"></i> Plot Selected
+                  </button>
+                  <button
+                    id="clearSelectedBtn"
+                    class="btn btn-outline-danger btn-sm"
+                    type="button"
+                  >
+                    <i class="fas fa-trash-alt me-1"></i> Clear List
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Center: Results Panel -->
+        <div class="col-md-9 col-lg-10 bg-white h-100 min-vh-100 overflow-auto">
+          <div class="p-4">
+            <div id="loading" class="text-center py-5">
+              <div
+                class="spinner-border text-primary"
+                role="status"
+                style="width: 3rem; height: 3rem"
+              >
+                <span class="visually-hidden">Loading...</span>
+              </div>
+              <h5 class="mt-3 text-muted">Fetching official records...</h5>
+            </div>
+
+            <div id="resultArea" class="h-100">
+              <div
+                class="h-100 d-flex flex-column justify-content-center align-items-center text-center p-5 opacity-75"
+              >
+                <div
+                  class="bg-light rounded-circle d-inline-flex align-items-center justify-content-center mb-4"
+                  style="width: 120px; height: 120px"
+                >
+                  <i
+                    class="fas fa-map-marked-alt text-primary fa-4x opacity-50"
+                  ></i>
+                </div>
+                <h3 class="fw-light text-dark mb-2">Ready to Explore</h3>
+                <p class="text-muted lead fs-6">
+                  Follow the steps on the sidebars to locate logic.<br />
+                  <small
+                    ><strong>1. Select Village</strong> &rarr;
+                    <strong>2. Enter Plot No</strong></small
+                  >
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Leaflet CSS -->
+    <link
+      rel="stylesheet"
+      href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    />
+    <link
+      rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css"
+    />
+
+    <!-- Libraries -->
+    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/proj4js/2.9.0/proj4.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/wicket/1.3.8/wicket.min.js"></script>
+
+    <script>
+      // Projections
+      proj4.defs(
+        "EPSG:32643",
+        "+proj=utm +zone=43 +datum=WGS84 +units=m +no_defs",
+      );
+      proj4.defs(
+        "EPSG:32644",
+        "+proj=utm +zone=44 +datum=WGS84 +units=m +no_defs",
+      );
+      proj4.defs(
+        "EVEREST",
+        "+proj=longlat +a=6377276.345 +b=6356075.41314024 +no_defs",
+      );
+      proj4.defs("EPSG:4326", "+proj=longlat +datum=WGS84 +no_defs");
+
+      let currentProj = "EPSG:32643";
+      let manualOffsetX = 0.0;
+      let manualOffsetY = 0.0;
+      let map = null;
+
+      const els = {
+        cat: document.getElementById("category"),
+        dist: document.getElementById("district"),
+        tal: document.getElementById("taluka"),
+        vil: document.getElementById("village"),
+        plot: document.getElementById("plotNo"),
+        btn: document.getElementById("searchBtn"),
+        res: document.getElementById("resultArea"),
+        load: document.getElementById("loading"),
+        spinners: {
+          dist: document.getElementById("loader-dist"),
+          tal: document.getElementById("loader-tal"),
+          vil: document.getElementById("loader-vil"),
+          plot: document.getElementById("loader-plot"),
+        },
+        addBtn: document.getElementById("addPlotBtn"),
+        addAllBtn: document.getElementById("addAllPlotsBtn"),
+        multiSect: document.getElementById("multiPlotSection"),
+        selectedList: document.getElementById("selectedPlotsList"),
+        plotSelBtn: document.getElementById("plotSelectedBtn"),
+        clearBtn: document.getElementById("clearSelectedBtn"),
+      };
+
+      let selectedPlots = [];
+      let multiPlotLayer = null;
+
+      window.onload = loadDistricts;
+      els.cat.addEventListener("change", loadDistricts);
+      els.dist.addEventListener("change", loadTalukas);
+      els.tal.addEventListener("change", loadVillages);
+      els.vil.addEventListener("change", loadPlots);
+      els.btn.addEventListener("click", searchPlot);
+      els.addBtn.addEventListener("click", addPlotToList);
+      els.addAllBtn.addEventListener("click", addAllPlotsToList);
+      els.plotSelBtn.addEventListener("click", plotAllSelected);
+      els.clearBtn.addEventListener("click", clearSelectedPlots);
+
+      function toggleSpinner(name, show) {
+        if (els.spinners[name])
+          els.spinners[name].style.display = show ? "inline-block" : "none";
+      }
+
+      function toggleFullScreen() {
+        const mapCard = document.getElementById("mapCard");
+        if (!mapCard) return;
+        mapCard.classList.toggle("fullscreen-map-container");
+        setTimeout(() => {
+          if (map) map.invalidateSize();
+        }, 300);
+      }
+
+      async function loadDistricts() {
+        resetSelects(["dist", "tal", "vil"]);
+        toggleSpinner("dist", true);
+        try {
+          const res = await axios.get(
+            `/api/districts?category=${els.cat.value}`,
+          );
+          populateSelect(els.dist, res.data, "25", "Pune");
+          els.dist.disabled = false;
+        } catch (e) {
+          console.error(e);
+        }
+        toggleSpinner("dist", false);
+      }
+
+      async function loadTalukas() {
+        resetSelects(["tal", "vil"]);
+        if (!els.dist.value) return;
+        toggleSpinner("tal", true);
+        try {
+          const res = await axios.get(
+            `/api/talukas/${els.dist.value}?category=${els.cat.value}`,
+          );
+          populateSelect(els.tal, res.data, "02", "Ambegaon");
+          els.tal.disabled = false;
+        } catch (e) {
+          console.error(e);
+        }
+        toggleSpinner("tal", false);
+      }
+
+      async function loadVillages() {
+        resetSelects(["vil"]);
+        if (!els.tal.value) return;
+        toggleSpinner("vil", true);
+        try {
+          const res = await axios.get(
+            `/api/villages/${els.dist.value}/${els.tal.value}?category=${els.cat.value}`,
+          );
+          populateSelect(els.vil, res.data, "272500020303690000", "Sakore");
+          els.vil.disabled = false;
+        } catch (e) {
+          console.error(e);
+        }
+        toggleSpinner("vil", false);
+      }
+
+      async function loadPlots() {
+        els.plot.innerHTML = '<option value="">Loading...</option>';
+        els.plot.disabled = true;
+        els.btn.disabled = true;
+        if (!els.vil.value) return;
+        toggleSpinner("plot", true);
+        try {
+          const res = await axios.get(
+            `/api/plots/${els.dist.value}/${els.tal.value}/${els.vil.value}?category=${els.cat.value}`,
+          );
+          els.plot.innerHTML = '<option value="">Select Gat No...</option>';
+          if (res.data && res.data.length > 0) {
+            res.data.forEach((p) => {
+              const opt = document.createElement("option");
+              opt.value = p;
+              opt.textContent = p;
+              els.plot.appendChild(opt);
+            });
+            if (res.data.includes("1")) els.plot.value = "1";
+            else els.plot.selectedIndex = 1;
+            els.plot.disabled = false;
+            els.btn.disabled = false;
+            els.addBtn.disabled = false;
+            els.addAllBtn.disabled = false;
+          }
+        } catch (e) {
+          console.error(e);
+        }
+        toggleSpinner("plot", false);
+      }
+
+      async function searchPlot() {
+        if (!els.plot.value) return alert("Enter Plot Number");
+        showLoading(true);
+        try {
+          const params = {
+            category: els.cat.value,
+            district: els.dist.value,
+            taluka: els.tal.value,
+            village_code: els.vil.value,
+            plot_no: els.plot.value,
+          };
+          const apiRes = await axios.get("/api/plot", { params });
+          const res = apiRes.data;
+          const catText = els.cat.options[els.cat.selectedIndex].text;
+          const distText = els.dist.options[els.dist.selectedIndex].text;
+          const talText = els.tal.options[els.tal.selectedIndex].text;
+          const vilText = els.vil.options[els.vil.selectedIndex].text;
+
+          if (res.the_geom) {
+            const records = res.parsed_records || [];
+            let cardsHtml = "";
+            if (records.length > 0) {
+              cardsHtml +=
+                '<div class="table-responsive"><table class="table table-hover table-sm mb-0"><tbody>';
+              records.forEach((rec, idx) => {
+                cardsHtml += `<tr class="table-light"><td colspan="2" class="fw-bold small py-2">Owner Record #${idx + 1}</td></tr>`;
+                for (const [k, v] of Object.entries(rec)) {
+                  cardsHtml += `<tr><td class="small fw-bold" style="width: 40%">${k}</td><td class="small">${v || "N/A"}</td></tr>`;
+                }
+              });
+              cardsHtml += "</tbody></table></div>";
+            } else if (res.info) {
+              cardsHtml = `<pre class="mt-2 small text-muted">${res.info}</pre>`;
+            }
+
+            let attrHtml =
+              '<div class="table-responsive"><table class="table table-sm table-bordered mb-0"><tbody>';
+            Object.keys(res)
+              .sort()
+              .forEach((k) => {
+                if (
+                  ![
+                    "the_geom",
+                    "parsed_records",
+                    "parsed_info",
+                    "info",
+                    "infoLinks",
+                  ].includes(k)
+                ) {
+                  attrHtml += `<tr><td class="small fw-bold">${k}</td><td class="small">${res[k]}</td></tr>`;
+                }
+              });
+            attrHtml += "</tbody></table></div>";
+
+            els.res.innerHTML = `
+              <div class="row g-3">
+                <div class="col-md-5">
+                  <div class="card border h-100" style="max-height: 80vh; overflow-y: auto;">
+                    <div class="card-body">
+                      <h4 class="fw-bold text-primary mb-1">Gat No ${res.plotno}</h4>
+                      <p class="small text-muted mb-3 font-monospace">${res.giscode}</p>
+                      <div class="small bg-light p-2 border rounded mb-3">
+                        <b>Village:</b> ${vilText} (${els.vil.value})
+                      </div>
+                      <div id="coord-summary" class="badge bg-dark text-warning p-2 mb-3 w-100">Calibrating...</div>
+                      <div class="d-flex gap-2 mb-3">
+                        ${res.infoLinks ? res.infoLinks.replace(/<a /g, '<a class="btn btn-outline-primary btn-sm flex-grow-1" ') : ""}
+                      </div>
+                      <h6 class="fw-bold small border-bottom pb-2">Owners</h6>
+                      ${cardsHtml}
+                      <h6 class="fw-bold small border-bottom pb-2 mt-3">Attributes</h6>
+                      ${attrHtml}
+                    </div>
+                  </div>
+                </div>
+                <div class="col-md-7">
+                  <div id="mapCard" class="card shadow border-0 h-100">
+                    <div class="card-header bg-white d-flex justify-content-between align-items-center py-2">
+                       <select class="form-select form-select-sm w-auto" onchange="toggleProjection(this.value)">
+                          <option value="EPSG:32643">UTM Zone 43N</option>
+                          <option value="EPSG:32644">UTM Zone 44N</option>
+                       </select>
+                       <div class="btn-group btn-group-sm">
+                          <button type="button" class="btn btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown">Calibrate</button>
+                          <ul class="dropdown-menu dropdown-menu-end p-3" style="width: 250px;">
+                             <li class="mb-2">X: <span id="off-x-val" class="fw-bold">0</span></li>
+                             <div class="btn-group btn-group-sm mb-2"><button class="btn btn-outline-primary" onclick="nudge('x', -0.0001)">-10m</button><button class="btn btn-outline-primary" onclick="nudge('x', -0.00001)">-1m</button><button class="btn btn-outline-primary" onclick="nudge('x', 0.00001)">+1m</button><button class="btn btn-outline-primary" onclick="nudge('x', 0.0001)">+10m</button></div>
+                             <li class="mb-2">Y: <span id="off-y-val" class="fw-bold">0</span></li>
+                             <div class="btn-group btn-group-sm mb-2"><button class="btn btn-outline-primary" onclick="nudge('y', -0.0001)">-10m</button><button class="btn btn-outline-primary" onclick="nudge('y', -0.00001)">-1m</button><button class="btn btn-outline-primary" onclick="nudge('y', 0.00001)">+1m</button><button class="btn btn-outline-primary" onclick=" nudge('y', 0.0001)">+10m</button></div>
+                             <button class="btn btn-sm btn-link text-danger" onclick="resetOffsets()">Reset All</button>
+                          </ul>
+                          <div class="input-group input-group-sm" style="width: 80px;">
+                            <input type="number" id="plotLimit" class="form-control" value="50" min="1" max="1000" title="Plot Limit">
+                          </div>
+                          <button class="btn btn-outline-secondary" onclick="toggleVillageMap()" title="Show All Plots"><i class="fas fa-layer-group"></i></button>
+                          <button class="btn btn-outline-secondary" onclick="toggleFullScreen()"><i class="fas fa-expand"></i></button>
+                       </div>
+                    </div>
+                    <div class="card-body p-0"><div id="mapid" style="height: 600px; width: 100%;"></div></div>
+                  </div>
+                </div>
+              </div>`;
+            setTimeout(() => {
+              initMap(res.the_geom);
+              window.currentGisCode = res.giscode;
+            }, 100);
+          }
+        } catch (e) {
+          console.error(e);
+        }
+        showLoading(false);
+      }
+
+      function addPlotToList() {
+        const p = els.plot.value;
+        if (!p) return alert("Select a Gat number first.");
+        if (selectedPlots.includes(p)) return alert("Already in list.");
+
+        selectedPlots.push(p);
+        updateSelectionUI();
+      }
+
+      function addAllPlotsToList() {
+        const options = els.plot.options;
+        let addedCount = 0;
+        for (let i = 0; i < options.length; i++) {
+          const val = options[i].value;
+          if (val && !selectedPlots.includes(val)) {
+            selectedPlots.push(val);
+            addedCount++;
+          }
+        }
+        if (addedCount > 0) {
+          updateSelectionUI();
+          plotAllSelected();
+        } else {
+          alert("All available plots are already in the list.");
+        }
+      }
+
+      function removePlotFromList(p) {
+        selectedPlots = selectedPlots.filter((item) => item !== p);
+        updateSelectionUI();
+      }
+
+      function updateSelectionUI() {
+        els.multiSect.style.display =
+          selectedPlots.length > 0 ? "block" : "none";
+        els.selectedList.innerHTML = "";
+        selectedPlots.forEach((p) => {
+          const badge = document.createElement("span");
+          badge.className = "badge bg-success d-flex align-items-center gap-2";
+          badge.innerHTML = `${p} <i class="fas fa-times-circle cursor-pointer" onclick="removePlotFromList('${p}')"></i>`;
+          els.selectedList.appendChild(badge);
+        });
+      }
+
+      function clearSelectedPlots() {
+        selectedPlots = [];
+        updateSelectionUI();
+        if (multiPlotLayer) {
+          map.removeLayer(multiPlotLayer);
+          multiPlotLayer = null;
+        }
+      }
+
+      async function plotAllSelected() {
+        if (!map) return;
+        if (selectedPlots.length === 0)
+          return alert("Add plots to list first.");
+
+        if (multiPlotLayer) map.removeLayer(multiPlotLayer);
+        multiPlotLayer = L.layerGroup().addTo(map);
+
+        const btn = els.plotSelBtn;
+        btn.disabled = true;
+        const originalHtml = btn.innerHTML;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Loading...';
+
+        const cat = els.cat.value;
+        const d = els.dist.value;
+        const t = els.tal.value;
+        const v = els.vil.value;
+
+        let loaded = 0;
+        for (const p of selectedPlots) {
+          try {
+            const pRes = await axios.get(
+              `/api/plot?category=${cat}&district=${d}&taluka=${t}&village_code=${v}&plot_no=${p}`,
+            );
+            if (pRes.data && pRes.data.the_geom) {
+              const wktObj = new Wkt.Wkt();
+              wktObj.read(pRes.data.the_geom);
+              let gj = wktObj.toJson();
+
+              const tr = (c) => {
+                if (typeof c[0] === "number") {
+                  let ll = proj4(
+                    currentProj === "EPSG:4326" ? "WGS84" : currentProj,
+                    "EPSG:4326",
+                    c,
+                  );
+                  return [ll[0] + manualOffsetX, ll[1] + manualOffsetY];
+                }
+                return c.map(tr);
+              };
+              gj.coordinates = tr(gj.coordinates);
+
+              L.geoJSON(gj, {
+                style: {
+                  color: "#dc3545", // Sharp Red for better visibility on green
+                  weight: 1.5,
+                  fillOpacity: 0.05,
+                  opacity: 0.9,
+                },
+              })
+                .bindPopup(`<b>Multi-Plot Gat:</b> ${p}`)
+                .addTo(multiPlotLayer);
+
+              loaded++;
+              btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> ${loaded}/${selectedPlots.length}`;
+            }
+          } catch (e) {
+            console.error("Multi-plot error", e);
+          }
+        }
+
+        btn.disabled = false;
+        btn.innerHTML = originalHtml;
+        if (window.currentPolygonLayer)
+          window.currentPolygonLayer.bringToFront();
+
+        // Fit bounds to the whole selection
+        const bounds = L.featureGroup(multiPlotLayer.getLayers()).getBounds();
+        if (bounds.isValid()) map.fitBounds(bounds);
+      }
+
+      function toggleProjection(val) {
+        currentProj = val;
+        refreshMap();
+      }
+      function nudge(axis, delta) {
+        if (axis === "x") manualOffsetX += delta;
+        else manualOffsetY += delta;
+        document.getElementById(`off-${axis}-val`).textContent = (
+          axis === "x" ? manualOffsetX : manualOffsetY
+        ).toFixed(6);
+        refreshMap();
+      }
+      function resetOffsets() {
+        manualOffsetX = 0;
+        manualOffsetY = 0;
+        document.getElementById("off-x-val").textContent = "0";
+        document.getElementById("off-y-val").textContent = "0";
+        refreshMap();
+      }
+      function copyText(text) {
+        navigator.clipboard.writeText(text).then(() => alert("Copied!"));
+      }
+      function refreshMap() {
+        if (map && window.lastWkt) initMap(window.lastWkt);
+      }
+
+      let villageBoundariesLayer = null;
+      async function toggleVillageMap() {
+        if (!map) return;
+        if (villageBoundariesLayer) {
+          map.removeLayer(villageBoundariesLayer);
+          villageBoundariesLayer = null;
+          return;
+        }
+        if (!window.currentGisCode) return alert("Search for a plot first.");
+
+        const btn = event.target.closest("button");
+        btn.disabled = true;
+        const originalHtml = btn.innerHTML;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+
+        villageBoundariesLayer = L.layerGroup().addTo(map);
+        const gis = window.currentGisCode;
+        const cat = gis.startsWith("RVM") ? "R" : "V",
+          d = gis.substring(3, 5),
+          t = gis.substring(5, 7),
+          v = gis.substring(7);
+
+        try {
+          const listRes = await axios.get(
+            `/api/plots/${d}/${t}/${v}?category=${cat}`,
+          );
+          let plots = listRes.data || [];
+          const limit =
+            parseInt(document.getElementById("plotLimit").value) || 50;
+          if (plots.length > limit) {
+            plots = plots.slice(0, limit);
+          }
+
+          let loaded = 0;
+          for (const p of plots) {
+            try {
+              const pRes = await axios.get(
+                `/api/plot?category=${cat}&district=${d}&taluka=${t}&village_code=${v}&plot_no=${p}`,
+              );
+              if (pRes.data && pRes.data.the_geom) {
+                const wktObj = new Wkt.Wkt();
+                wktObj.read(pRes.data.the_geom);
+                let gj = wktObj.toJson();
+                const tr = (c) => {
+                  if (typeof c[0] === "number") {
+                    let ll = proj4(
+                      currentProj === "EPSG:4326" ? "WGS84" : currentProj,
+                      "EPSG:4326",
+                      c,
+                    );
+                    return [ll[0] + manualOffsetX, ll[1] + manualOffsetY];
+                  }
+                  return c.map(tr);
+                };
+                gj.coordinates = tr(gj.coordinates);
+                L.geoJSON(gj, {
+                  style: {
+                    color: "#333",
+                    weight: 2,
+                    fillOpacity: 0,
+                    opacity: 0.8,
+                  },
+                })
+                  .bindPopup(`Gat: ${p}`)
+                  .addTo(villageBoundariesLayer);
+                loaded++;
+                btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> ${loaded}/${plots.length}`;
+              }
+            } catch (e) {}
+          }
+        } catch (e) {}
+        btn.disabled = false;
+        btn.innerHTML = originalHtml;
+        if (window.currentPolygonLayer)
+          window.currentPolygonLayer.bringToFront();
+      }
+
+      function initMap(wkt) {
+        window.lastWkt = wkt;
+        if (map) map.remove();
+        map = L.map("mapid").setView([19.75, 75.71], 7);
+        const sat = L.tileLayer(
+          "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+          { attribution: "Esri" },
+        ).addTo(map);
+        const osm = L.tileLayer(
+          "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+        );
+        L.control.layers({ Satellite: sat, OSM: osm }).addTo(map);
+
+        try {
+          const wktObj = new Wkt.Wkt();
+          wktObj.read(wkt);
+          let gj = wktObj.toJson();
+          const tr = (c) => {
+            if (typeof c[0] === "number") {
+              let ll = proj4(
+                currentProj === "EPSG:4326" ? "WGS84" : currentProj,
+                "EPSG:4326",
+                c,
+              );
+              return [ll[0] + manualOffsetX, ll[1] + manualOffsetY];
+            }
+            return c.map(tr);
+          };
+          gj.coordinates = tr(gj.coordinates);
+          window.currentPolygonLayer = L.geoJSON(gj, {
+            style: { color: "#0d6efd", weight: 2, fillOpacity: 0.1 },
+          }).addTo(map);
+
+          let latSum = 0,
+            lngSum = 0,
+            count = 0;
+          const walk = (arr) => {
+            if (
+              Array.isArray(arr) &&
+              arr.length === 2 &&
+              typeof arr[0] === "number"
+            ) {
+              const lng = arr[0],
+                lat = arr[1];
+              latSum += lat;
+              lngSum += lng;
+              count++;
+              L.circleMarker([lat, lng], {
+                radius: 4,
+                fillColor: "#dc3545",
+                color: "#fff",
+                weight: 1,
+                fillOpacity: 0.8,
+              })
+                .addTo(map)
+                .bindPopup(
+                  `<div class='text-center'>${lat.toFixed(6)}, ${lng.toFixed(6)}<br><button class='btn btn-xs btn-primary' onclick='copyText(\"${lat.toFixed(6)}, ${lng.toFixed(6)}\")'>Copy</button></div>`,
+                );
+              return;
+            }
+            if (Array.isArray(arr)) arr.forEach(walk);
+          };
+          walk(gj.coordinates);
+          if (count > 0)
+            document.getElementById("coord-summary").textContent =
+              `Center: ${(latSum / count).toFixed(6)}, ${(lngSum / count).toFixed(6)}`;
+          map.fitBounds(window.currentPolygonLayer.getBounds());
+        } catch (e) {
+          console.error(e);
+        }
+      }
+
+      function populateSelect(el, data, prefCode = null, prefText = null) {
+        el.innerHTML = '<option value="">Select...</option>';
+        data.forEach((d) => {
+          const opt = document.createElement("option");
+          opt.value = d.code;
+          opt.textContent = d.value;
+          el.appendChild(opt);
+        });
+        if (data.length > 0) {
+          let idx = 1;
+          if (prefCode) {
+            const fi = data.findIndex((d) => d.code === prefCode);
+            if (fi !== -1) idx = fi + 1;
+          } else if (prefText) {
+            const fi = data.findIndex((d) =>
+              d.value.toLowerCase().includes(prefText.toLowerCase()),
+            );
+            if (fi !== -1) idx = fi + 1;
+          }
+          el.selectedIndex = idx;
+          el.dispatchEvent(new Event("change"));
+        }
+      }
+
+      function resetSelects(keys) {
+        keys.forEach((k) => {
+          els[k].innerHTML = '<option value="">Select...</option>';
+          els[k].disabled = true;
+        });
+        els.btn.disabled = true;
+      }
+
+      function showLoading(show) {
+        els.load.style.display = show ? "block" : "none";
+        els.res.style.display = show ? "none" : "block";
+      }
+    </script>
+  </body>
+</html>
